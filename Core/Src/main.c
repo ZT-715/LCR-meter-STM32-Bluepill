@@ -115,8 +115,8 @@ int main(void)
 	  HAL_Delay(1000);
 
 	  for(int i = 0; i < SAMPLES; i++) {
-		  volatile uint32_t H = DMA_ADC_buffer[i] & 0xF0;
-		  volatile uint32_t L = DMA_ADC_buffer[i] & 0x0F;
+          uint16_t val_adc1 = DMA_ADC_buffer[i] & 0xFFFF;
+          uint16_t val_adc2 = (DMA_ADC_buffer[i] >> 16) & 0xFFFF;
 	  }
 
 	  HAL_ADC_Start(&hadc2);
