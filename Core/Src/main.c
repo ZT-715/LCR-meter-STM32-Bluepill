@@ -35,6 +35,8 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 
+#define SAMPLES 100
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -45,6 +47,8 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
+
+uint32_t DMA_ADC_buffer[SAMPLES];
 
 /* USER CODE END PV */
 
@@ -84,6 +88,8 @@ int main(void)
 
   /* USER CODE BEGIN SysInit */
 
+  HAL_Delay(2000);
+
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
@@ -95,6 +101,9 @@ int main(void)
 
   HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET);
 
+  ADC_MultiModeTypeDef multimode = {0};
+  multimode.Mode = ADC_DUALMODE_REGSIMULT;
+  HAL_ADCEx_MultiModeConfigChannel(&hadc1, &multimode);
 
   /* USER CODE END 2 */
 
@@ -102,9 +111,19 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-    /* USER CODE END WHILE */
-	  HAL_Delay(200U);
 	  HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
+	  HAL_Delay(1000);
+
+	  for(int i = 0; i < SAMPLES; i++) {
+		  volatile uint32_t H = DMA_ADC_buffer[i] & 0xF0;
+		  volatile uint32_t L = DMA_ADC_buffer[i] & 0x0F;
+	  }
+
+	  HAL_ADC_Start(&hadc2);
+	  HAL_ADCEx_MultiModeStart_DMA(&hadc1, (uint32_t*)DMA_ADC_buffer, SAMPLES);
+
+	  /* USER CODE END WHILE */
+
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
