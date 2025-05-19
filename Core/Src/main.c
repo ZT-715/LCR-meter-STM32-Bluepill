@@ -26,7 +26,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "string.h"
+#include "stdio.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -36,9 +37,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
 #define SAMPLES 100
-
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -49,20 +48,68 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-
 uint32_t DMA_ADC_buffer[SAMPLES];
-
+volatile uint8_t adc_done = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
-
+void Start_Dual_ADC_DMA(void);
+int __io_putchar(int ch);
+int _write(int file, char *ptr, int len);
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+// Function may conflict with syscalls.c, erase them in this case.
+int __io_putchar(int ch) {
+  while (ITM->PORT[0U].u32 == 0UL) {
+    __NOP();
+  }
+  ITM->PORT[0U].u8 = (uint8_t)ch;
+  return ch;
+}
 
+// Function may conflict with syscalls.c, erase them in this case.
+int _write(int file, char *ptr, int len) {
+  for (int i = 0; i < len; i++) {
+    __io_putchar(*ptr);
+    ptr++;
+  }
+  return len;
+}
+
+void Start_Dual_ADC_DMA(void)
+{
+  ADC_MultiModeTypeDef multimode = {0};
+  multimode.Mode = ADC_DUALMODE_REGSIMULT;
+  HAL_ADCEx_MultiModeConfigChannel(&hadc1, &multimode);
+
+  // Start ADC2 first
+  HAL_ADC_Start(&hadc2);
+
+  // Clear flag
+  adc_done = 0;
+
+  // Start DMA for ADC1
+  HAL_ADCEx_MultiModeStart_DMA(&hadc1, (uint32_t*)DMA_ADC_buffer, SAMPLES);
+
+  // Start Timer1 to trigger ADC
+  HAL_TIM_Base_Start(&htim1);
+}
+
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
+{
+  if (hadc->Instance == ADC1)
+  {
+    HAL_TIM_Base_Stop(&htim1);
+    HAL_ADCEx_MultiModeStop_DMA(hadc);
+    HAL_ADC_Stop(&hadc2);
+    adc_done = 1;
+  }
+}
 /* USER CODE END 0 */
 
 /**
@@ -90,8 +137,6 @@ int main(void)
 
   /* USER CODE BEGIN SysInit */
 
-  HAL_Delay(2000);
-
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
@@ -102,30 +147,31 @@ int main(void)
   MX_TIM1_Init();
   MX_USB_DEVICE_Init();
   /* USER CODE BEGIN 2 */
-
-  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET);
-
-  ADC_MultiModeTypeDef multimode = {0};
-  multimode.Mode = ADC_DUALMODE_REGSIMULT;
-  HAL_ADCEx_MultiModeConfigChannel(&hadc1, &multimode);
-
+  Start_Dual_ADC_DMA();
+  printf("\r"); // start serial
+  printf("Start Program:\r\n");
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	  HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
-	  HAL_Delay(1000);
+    if (adc_done)
+    {
+      HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
 
-	  for(int i = 0; i < SAMPLES; i++) {
-          uint16_t val_adc1 = DMA_ADC_buffer[i] & 0xFFFF;
-          uint16_t val_adc2 = (DMA_ADC_buffer[i] >> 16) & 0xFFFF;
-	  }
+      for (int i = 0; i < SAMPLES; i++) {
+        uint16_t val_adc1 = DMA_ADC_buffer[i] & 0xFFFF;
+        uint16_t val_adc2 = (DMA_ADC_buffer[i] >> 16) & 0xFFFF;
 
-	  HAL_ADC_Start(&hadc2);
-	  HAL_ADCEx_MultiModeStart_DMA(&hadc1, (uint32_t*)DMA_ADC_buffer, SAMPLES);
+        printf("ADC1 %d\r\n", val_adc1);
+        printf("ADC2 %d\r\n", val_adc2);
+      }
 
+      adc_done = 0;
+      HAL_Delay(1000);
+      Start_Dual_ADC_DMA(); // restart acquisition
+    }
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
