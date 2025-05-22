@@ -37,7 +37,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define SAMPLES 100
+#define SAMPLES 5*2
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -48,7 +48,7 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-uint32_t DMA_ADC_buffer[SAMPLES];
+uint32_t DMA_ADC_buffer[SAMPLES/2];
 volatile uint8_t adc_done = 0;
 /* USER CODE END PV */
 
@@ -97,19 +97,50 @@ void Start_Dual_ADC_DMA(void)
   HAL_ADCEx_MultiModeStart_DMA(&hadc1, (uint32_t*)DMA_ADC_buffer, SAMPLES);
 
   // Start Timer1 to trigger ADC
-  HAL_TIM_Base_Start(&htim1);
+  HAL_TIM_Base_Start_IT(&htim3);
 }
 
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 {
-  if (hadc->Instance == ADC1)
-  {
-    HAL_TIM_Base_Stop(&htim1);
+//  if (hadc->Instance == ADC1)
+//  {
+    HAL_TIM_Base_Stop_IT(&htim3);
     HAL_ADCEx_MultiModeStop_DMA(hadc);
     HAL_ADC_Stop(&hadc2);
     adc_done = 1;
-  }
+//  }
 }
+
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
+    if (htim->Instance == TIM3) {
+    	HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
+    	printf("[%lu ms] Converion\r\n", HAL_GetTick());
+    }
+}
+
+void HAL_ADC_ErrorCallback(ADC_HandleTypeDef *hadc) {
+    if (hadc->Instance == ADC1) {
+        printf("ADC1 Error! Code: 0x%lX\r\n", hadc->ErrorCode);
+
+        if (hadc->ErrorCode & HAL_ADC_ERROR_OVR) {
+            printf(" - Overrun error (new data before old was read)\r\n");
+        }
+
+        if (hadc->ErrorCode & HAL_ADC_ERROR_DMA) {
+            printf(" - DMA transfer error\r\n");
+        }
+
+        if (hadc->ErrorCode & HAL_ADC_ERROR_INTERNAL) {
+            printf(" - Internal ADC HAL error\r\n");
+        }
+
+        if (hadc->ErrorCode == HAL_ADC_ERROR_NONE) {
+            printf(" - No error\r\n");
+        }
+    }
+}
+
+
 /* USER CODE END 0 */
 
 /**
@@ -144,12 +175,13 @@ int main(void)
   MX_DMA_Init();
   MX_ADC1_Init();
   MX_ADC2_Init();
-  MX_TIM1_Init();
   MX_USB_DEVICE_Init();
+  MX_TIM3_Init();
   /* USER CODE BEGIN 2 */
-  Start_Dual_ADC_DMA();
   printf("\r"); // start serial
   printf("Start Program:\r\n");
+  // Adicionar calibração
+  Start_Dual_ADC_DMA();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -158,14 +190,14 @@ int main(void)
   {
     if (adc_done)
     {
-      HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
+      HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, 1);
 
       for (int i = 0; i < SAMPLES; i++) {
         uint16_t val_adc1 = DMA_ADC_buffer[i] & 0xFFFF;
         uint16_t val_adc2 = (DMA_ADC_buffer[i] >> 16) & 0xFFFF;
 
-        printf("ADC1 %d\r\n", val_adc1);
-        printf("ADC2 %d\r\n", val_adc2);
+        printf("ADC1[%d] \t%u\r\n", i, val_adc1);
+        printf("ADC2[%d] \t%u\r\n", i, val_adc2);
       }
 
       adc_done = 0;
