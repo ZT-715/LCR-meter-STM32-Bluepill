@@ -26,6 +26,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <usbd_cdc_if.h>
+
 #include "string.h"
 #include "stdio.h"
 /* USER CODE END Includes */
@@ -38,6 +40,7 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define SAMPLES 5*2
+#define CPU_FREQUENCY 72000000
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -48,22 +51,39 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-uint32_t DMA_ADC_buffer[SAMPLES/2];
+enum signal_frequency {ONE_MHZ, ONE_HUNDRED_KHZ, TEN_KHZ, ONE_KHZ, ONE_HUNDRED_HZ, SIXTY_HZ};
+
+uint32_t DMA_ADC_buffer[SAMPLES/2] = {[0 ... SAMPLES/2-1] = 9999};
+uint32_t DMA_ADC_timming_buffer[SAMPLES/2] = {[0 ... SAMPLES/2-1] = 9999};
 volatile uint8_t adc_done = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
-void Start_Dual_ADC_DMA(void);
 int __io_putchar(int ch);
+
 int _write(int file, char *ptr, int len);
+
+HAL_StatusTypeDef TIM3_config(TIM_HandleTypeDef *htim3,
+  enum signal_frequency src_frequency,
+  uint16_t samples_per_period);
+
+HAL_StatusTypeDef ADC_Dual_config(ADC_HandleTypeDef *adc1, ADC_HandleTypeDef *adc2,
+  enum signal_frequency src_frequency, uint16_t samples_per_period);
+
+HAL_StatusTypeDef Start_Dual_ADC_DMA(enum signal_frequency src_frequency,
+  uint16_t samples_per_period,
+  uint32_t number_of_samples,
+  uint32_t* DMA_ADC_buffer);
+
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 // Function may conflict with syscalls.c, erase them in this case.
+
 int __io_putchar(int ch) {
   while (ITM->PORT[0U].u32 == 0UL) {
     __NOP();
@@ -81,46 +101,198 @@ int _write(int file, char *ptr, int len) {
   return len;
 }
 
-void Start_Dual_ADC_DMA(void)
+
+HAL_StatusTypeDef TIM3_config(TIM_HandleTypeDef *htim3,
+  enum signal_frequency src_frequency,
+  uint16_t samples_per_period)
+{
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  uint32_t timer_frequency = 0;
+  switch (src_frequency) {
+    case ONE_KHZ:
+      timer_frequency = 1000 * samples_per_period; // Sampling frequency in Hz
+    break;
+    case ONE_HUNDRED_HZ:
+      timer_frequency = 100 * samples_per_period;
+    break;
+    case SIXTY_HZ:
+      timer_frequency = 60 * samples_per_period;
+    break;
+    default:
+      return HAL_ERROR;
+  }
+
+  if (timer_frequency > 100e3) {
+         printf("Error: Sampling frequency %lu not supported.\r\n", timer_frequency);
+         return HAL_ERROR;
+  }
+
+  uint32_t prescaler = 0;
+  uint32_t period = 0;
+
+  // (CPU_FREQUENCY/((1+prescaler)*(1+period)) == timer_frequency)
+  if (CPU_FREQUENCY/timer_frequency > 0xFFFF) {
+    prescaler = 0xFFFF;
+    if (CPU_FREQUENCY/((1+prescaler)*timer_frequency) - 1 > 0xFFFF) {
+      printf("Error: Sampling frequency %lu beyond period limit for TIM3\r\n", timer_frequency);
+      return HAL_ERROR;
+    }
+    period = CPU_FREQUENCY/((1+prescaler)*timer_frequency) - 1;
+  }
+  else {
+    period = 0;
+    prescaler = CPU_FREQUENCY/timer_frequency - 1;
+  }
+
+  htim3->Instance = TIM3;
+  htim3->Init.Prescaler = period;
+  htim3->Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim3->Init.Period = prescaler;
+  htim3->Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim3->Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+
+  if (HAL_TIM_Base_Init(htim3) != HAL_OK)
+  {
+    return HAL_ERROR;
+  }
+
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+
+  if (HAL_TIM_ConfigClockSource(htim3, &sClockSourceConfig) != HAL_OK)
+  {
+    return HAL_ERROR;
+  }
+
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_UPDATE;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+
+  if (HAL_TIMEx_MasterConfigSynchronization(htim3, &sMasterConfig) != HAL_OK)
+  {
+    return HAL_ERROR;
+  }
+
+  return HAL_OK;
+}
+
+HAL_StatusTypeDef ADC_Dual_config(
+  ADC_HandleTypeDef *hadc1,
+  ADC_HandleTypeDef *hadc2,
+  enum signal_frequency src_frequency,
+  uint16_t samples_per_period)
 {
   ADC_MultiModeTypeDef multimode = {0};
+  ADC_ChannelConfTypeDef sConfig = {0};
+
+  /** Common config
+  */
+  hadc1->Instance = ADC1;
+  hadc1->Init.ScanConvMode = ADC_SCAN_DISABLE;
+  hadc1->Init.ContinuousConvMode = DISABLE;
+  hadc1->Init.DiscontinuousConvMode = DISABLE;
+  hadc1->Init.ExternalTrigConv = ADC_EXTERNALTRIGCONV_T3_TRGO;
+  hadc1->Init.DataAlign = ADC_DATAALIGN_RIGHT;
+  hadc1->Init.NbrOfConversion = 1;
+  if (HAL_ADC_Init(hadc1) != HAL_OK)
+  {
+    return HAL_ERROR;
+  }
+
+  /** Configure the ADC multi-mode
+  */
   multimode.Mode = ADC_DUALMODE_REGSIMULT;
-  HAL_ADCEx_MultiModeConfigChannel(&hadc1, &multimode);
+  if (HAL_ADCEx_MultiModeConfigChannel(hadc1, &multimode) != HAL_OK)
+  {
+    return HAL_ERROR;
+  }
 
-  // Start ADC2 first
-  HAL_ADC_Start(&hadc2);
+  /** Configure Regular Channel
+  */
+  sConfig.Channel = ADC_CHANNEL_1;
+  sConfig.Rank = ADC_REGULAR_RANK_1;
+  sConfig.SamplingTime = ADC_SAMPLETIME_1CYCLE_5;
+  if (HAL_ADC_ConfigChannel(hadc1, &sConfig) != HAL_OK)
+  {
+    return HAL_ERROR;
+  }
 
-  // Clear flag
+  /* ADC2 init function */
+  /** Common config
+  */
+  hadc2->Instance = ADC2;
+  hadc2->Init.ScanConvMode = ADC_SCAN_DISABLE;
+  hadc2->Init.ContinuousConvMode = DISABLE;
+  hadc2->Init.DiscontinuousConvMode = DISABLE;
+  hadc2->Init.ExternalTrigConv = ADC_SOFTWARE_START;
+  hadc2->Init.DataAlign = ADC_DATAALIGN_RIGHT;
+  hadc2->Init.NbrOfConversion = 1;
+  if (HAL_ADC_Init(hadc2) != HAL_OK)
+  {
+    return HAL_ERROR;
+  }
+
+  /** Configure Regular Channel
+  */
+  sConfig.Channel = ADC_CHANNEL_2;
+  sConfig.Rank = ADC_REGULAR_RANK_1;
+  sConfig.SamplingTime = ADC_SAMPLETIME_1CYCLE_5;
+  if (HAL_ADC_ConfigChannel(hadc2, &sConfig) != HAL_OK)
+  {
+    return HAL_ERROR;
+  }
+
+  multimode.Mode = ADC_DUALMODE_REGSIMULT;
+  HAL_ADCEx_MultiModeConfigChannel(hadc1, &multimode);
+  return HAL_OK;
+}
+
+HAL_StatusTypeDef Start_Dual_ADC_DMA(
+  const enum signal_frequency src_frequency,
+  const uint16_t samples_per_period,
+  const uint32_t number_of_samples,
+  uint32_t* DMA_ADC_buffer)
+{
   adc_done = 0;
+  TIM3_config(&htim3, src_frequency, samples_per_period);
+  ADC_Dual_config(&hadc1, &hadc2, src_frequency, samples_per_period);
 
-  // Start DMA for ADC1
-  HAL_ADCEx_MultiModeStart_DMA(&hadc1, (uint32_t*)DMA_ADC_buffer, SAMPLES);
+  HAL_ADCEx_Calibration_Start(&hadc1);
+  HAL_ADCEx_Calibration_Start(&hadc2);
 
-  // Start Timer1 to trigger ADC
+  HAL_ADC_Start(&hadc2);
+  HAL_ADCEx_MultiModeStart_DMA(&hadc1, DMA_ADC_buffer, number_of_samples);
+
   HAL_TIM_Base_Start_IT(&htim3);
+  return HAL_OK;
 }
 
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 {
-//  if (hadc->Instance == ADC1)
-//  {
+  if (hadc->Instance == ADC1)
+  {
     HAL_TIM_Base_Stop_IT(&htim3);
     HAL_ADCEx_MultiModeStop_DMA(hadc);
     HAL_ADC_Stop(&hadc2);
     adc_done = 1;
-//  }
+  }
 }
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
     if (htim->Instance == TIM3) {
     	HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
-    	printf("[%lu ms] Converion\r\n", HAL_GetTick());
+      for (int i = 0; i < SAMPLES/2; i++) {
+        if (DMA_ADC_timming_buffer[i] == 9999){
+        	DMA_ADC_timming_buffer[i] = HAL_GetTick();
+        	break;
+        }
+      }
     }
 }
 
 void HAL_ADC_ErrorCallback(ADC_HandleTypeDef *hadc) {
     if (hadc->Instance == ADC1) {
-        printf("ADC1 Error! Code: 0x%lX\r\n", hadc->ErrorCode);
+        printf("[%lu ms] ADC1 Error! Code: 0x%lX\r\n", HAL_GetTick(), hadc->ErrorCode);
 
         if (hadc->ErrorCode & HAL_ADC_ERROR_OVR) {
             printf(" - Overrun error (new data before old was read)\r\n");
@@ -180,8 +352,9 @@ int main(void)
   /* USER CODE BEGIN 2 */
   printf("\r"); // start serial
   printf("Start Program:\r\n");
-  // Adicionar calibração
-  Start_Dual_ADC_DMA();
+
+  Start_Dual_ADC_DMA(ONE_KHZ,10, SAMPLES, DMA_ADC_buffer);
+  HAL_TIM_Base_Start_IT(&htim3);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -192,17 +365,20 @@ int main(void)
     {
       HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, 1);
 
-      for (int i = 0; i < SAMPLES; i++) {
+      for (int i = 0; i < SAMPLES/2; i++) {
         uint16_t val_adc1 = DMA_ADC_buffer[i] & 0xFFFF;
         uint16_t val_adc2 = (DMA_ADC_buffer[i] >> 16) & 0xFFFF;
 
-        printf("ADC1[%d] \t%u\r\n", i, val_adc1);
-        printf("ADC2[%d] \t%u\r\n", i, val_adc2);
+        printf("\r\n[%04lu ms] reading:\r\n", DMA_ADC_timming_buffer[i]);
+        printf("ADC1[%03d] \t%04X\r\n", i, val_adc1);
+        printf("ADC2[%03d] \t%04X\r\n", i, val_adc2);
       }
 
-      adc_done = 0;
       HAL_Delay(1000);
-      Start_Dual_ADC_DMA(); // restart acquisition
+      Start_Dual_ADC_DMA(ONE_KHZ,
+        10,
+        SAMPLES,
+        DMA_ADC_buffer); // restart acquisition
     }
     /* USER CODE END WHILE */
 
@@ -271,8 +447,10 @@ void Error_Handler(void)
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
   __disable_irq();
+  printf("[%lu ms] Error! \r\n", HAL_GetTick());
   while (1)
   {
+    __NOP();
   }
   /* USER CODE END Error_Handler_Debug */
 }
