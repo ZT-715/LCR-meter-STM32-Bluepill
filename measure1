@@ -1,0 +1,1008 @@
+#ADC
+
+Medida 1: A0 0º 3.3V A1 30º 3V
+
+
+Start Program:
+Sample total: 179 (lido como signed)
+
+[0003 us] reading:
+ADC1[000] 	0CCF
+ADC2[000] 	0A05
+
+[0109 us] reading:
+ADC1[001] 	07EB
+ADC2[001] 	05DF
+
+[0209 us] reading:
+ADC1[002] 	05EF
+ADC2[002] 	084B
+
+[0309 us] reading:
+ADC1[003] 	0C68
+ADC2[003] 	0FFF
+
+[0409 us] reading:
+ADC1[004] 	0FFF
+ADC2[004] 	0FCD
+
+[0509 us] reading:
+ADC1[005] 	0DDF
+ADC2[005] 	0A0D
+
+[0609 us] reading:
+ADC1[006] 	082F
+ADC2[006] 	05DF
+
+[0709 us] reading:
+ADC1[007] 	05BF
+ADC2[007] 	076F
+
+[0809 us] reading:
+ADC1[008] 	0B7F
+ADC2[008] 	0F4F
+
+[0909 us] reading:
+ADC1[009] 	0FDF
+ADC2[009] 	0F8F
+
+[1009 us] reading:
+ADC1[010] 	0DAF
+ADC2[010] 	0ADF
+
+[1109 us] reading:
+ADC1[011] 	078F
+ADC2[011] 	05A9
+
+[1209 us] reading:
+ADC1[012] 	04CF
+ADC2[012] 	06BF
+
+[1309 us] reading:
+ADC1[013] 	0A68
+ADC2[013] 	0E6F
+
+[1409 us] reading:
+ADC1[014] 	0FCD
+ADC2[014] 	0F4F
+
+[1509 us] reading:
+ADC1[015] 	0D1F
+ADC2[015] 	0A4F
+
+[1609 us] reading:
+ADC1[016] 	06A9
+ADC2[016] 	03EF
+
+[1709 us] reading:
+ADC1[017] 	0343
+ADC2[017] 	04C9
+
+[1809 us] reading:
+ADC1[018] 	081F
+ADC2[018] 	0B7F
+
+[1909 us] reading:
+ADC1[019] 	0E2F
+ADC2[019] 	0EDF
+
+[2009 us] reading:
+ADC1[020] 	0D6F
+ADC2[020] 	0A0F
+
+[2109 us] reading:
+ADC1[021] 	064F
+ADC2[021] 	032F
+
+[2209 us] reading:
+ADC1[022] 	0279
+ADC2[022] 	03EF
+
+[2309 us] reading:
+ADC1[023] 	0720
+ADC2[023] 	0A9F
+
+[2409 us] reading:
+ADC1[024] 	0C7F
+ADC2[024] 	0DAF
+
+[2509 us] reading:
+ADC1[025] 	0BCF
+ADC2[025] 	07E9
+
+[2609 us] reading:
+ADC1[026] 	03DF
+ADC2[026] 	009B
+
+[2709 us] reading:
+ADC1[027] 	0000
+ADC2[027] 	007B
+
+[2809 us] reading:
+ADC1[028] 	034F
+ADC2[028] 	068F
+
+[2909 us] reading:
+ADC1[029] 	093F
+ADC2[029] 	098D
+
+[3009 us] reading:
+ADC1[030] 	07AF
+ADC2[030] 	040F
+
+[3109 us] reading:
+ADC1[031] 	0000
+ADC2[031] 	0000
+
+[3209 us] reading:
+ADC1[032] 	0000
+ADC2[032] 	0000
+
+[3309 us] reading:
+ADC1[033] 	02C2
+ADC2[033] 	0599
+
+[3409 us] reading:
+ADC1[034] 	086B
+ADC2[034] 	082F
+
+[3509 us] reading:
+ADC1[035] 	0689
+ADC2[035] 	01DF
+
+[3609 us] reading:
+ADC1[036] 	0000
+ADC2[036] 	0000
+
+[3709 us] reading:
+ADC1[037] 	0000
+ADC2[037] 	005F
+
+[3809 us] reading:
+ADC1[038] 	030F
+ADC2[038] 	05BF
+
+[3909 us] reading:
+ADC1[039] 	079F
+ADC2[039] 	081F
+
+[4009 us] reading:
+ADC1[040] 	065F
+ADC2[040] 	0315
+
+[4109 us] reading:
+ADC1[041] 	0000
+ADC2[041] 	0000
+
+[4209 us] reading:
+ADC1[042] 	0000
+ADC2[042] 	0000
+
+[4309 us] reading:
+ADC1[043] 	02A0
+ADC2[043] 	059F
+
+[4409 us] reading:
+ADC1[044] 	07DF
+ADC2[044] 	07E9
+
+[4509 us] reading:
+ADC1[045] 	064D
+ADC2[045] 	01DF
+
+[4609 us] reading:
+ADC1[046] 	0000
+ADC2[046] 	0000
+
+[4709 us] reading:
+ADC1[047] 	0000
+ADC2[047] 	0000
+
+[4809 us] reading:
+ADC1[048] 	025F
+ADC2[048] 	05CF
+
+[4909 us] reading:
+ADC1[049] 	087F
+ADC2[049] 	08CF
+
+[5009 us] reading:
+ADC1[050] 	071F
+ADC2[050] 	035B
+
+[5109 us] reading:
+ADC1[051] 	0000
+ADC2[051] 	0000
+
+[5209 us] reading:
+ADC1[052] 	0000
+ADC2[052] 	00CD
+
+[5309 us] reading:
+ADC1[053] 	03B4
+ADC2[053] 	06C5
+
+[32409 us] reading:
+ADC1[054] 	0A0B
+ADC2[054] 	09DF
+
+[32509 us] reading:
+ADC1[055] 	08DF
+ADC2[055] 	04CF
+
+[32609 us] reading:
+ADC1[056] 	01C3
+ADC2[056] 	0000
+
+[32709 us] reading:
+ADC1[057] 	0000
+ADC2[057] 	01D3
+
+[32809 us] reading:
+ADC1[058] 	040F
+ADC2[058] 	084F
+
+[32909 us] reading:
+ADC1[059] 	0B2F
+ADC2[059] 	0C0F
+
+[33009 us] reading:
+ADC1[060] 	0A8F
+ADC2[060] 	078F
+
+[33109 us] reading:
+ADC1[061] 	041F
+ADC2[061] 	0165
+
+[33209 us] reading:
+ADC1[062] 	0094
+ADC2[062] 	0202
+
+[33309 us] reading:
+ADC1[063] 	0588
+ADC2[063] 	093D
+
+[33409 us] reading:
+ADC1[064] 	0C4F
+ADC2[064] 	0D2F
+
+[33509 us] reading:
+ADC1[065] 	0C0F
+ADC2[065] 	092F
+
+[33609 us] reading:
+ADC1[066] 	05BF
+ADC2[066] 	035B
+
+[33709 us] reading:
+ADC1[067] 	02DB
+ADC2[067] 	04AF
+
+[33809 us] reading:
+ADC1[068] 	085D
+ADC2[068] 	0C8B
+
+[33909 us] reading:
+ADC1[069] 	0FCF
+ADC2[069] 	0FFF
+
+[34009 us] reading:
+ADC1[070] 	0DCD
+ADC2[070] 	0B3F
+
+[34109 us] reading:
+ADC1[071] 	086F
+ADC2[071] 	05C9
+
+[34209 us] reading:
+ADC1[072] 	054F
+ADC2[072] 	075B
+
+[34309 us] reading:
+ADC1[073] 	0B2F
+ADC2[073] 	0F2F
+
+[34409 us] reading:
+ADC1[074] 	0FFF
+ADC2[074] 	0FFF
+
+[34509 us] reading:
+ADC1[075] 	0E4F
+ADC2[075] 	0BAD
+
+[34609 us] reading:
+ADC1[076] 	084D
+ADC2[076] 	069B
+
+[34709 us] reading:
+ADC1[077] 	05B7
+ADC2[077] 	07AF
+
+[34809 us] reading:
+ADC1[078] 	0B2F
+ADC2[078] 	0F5F
+
+[34909 us] reading:
+ADC1[079] 	0FCF
+ADC2[079] 	0F8F
+
+[35009 us] reading:
+ADC1[080] 	0D6F
+ADC2[080] 	0B3D
+
+[35109 us] reading:
+ADC1[081] 	07AF
+ADC2[081] 	06DF
+
+[35209 us] reading:
+ADC1[082] 	066D
+ADC2[082] 	081F
+
+[35309 us] reading:
+ADC1[083] 	0C4C
+ADC2[083] 	0FFF
+
+[35409 us] reading:
+ADC1[084] 	0FFF
+ADC2[084] 	0FFF
+
+[35509 us] reading:
+ADC1[085] 	0DBF
+ADC2[085] 	0B6F
+
+[35609 us] reading:
+ADC1[086] 	087B
+ADC2[086] 	05EF
+
+[35709 us] reading:
+ADC1[087] 	05EF
+ADC2[087] 	082F
+
+[35809 us] reading:
+ADC1[088] 	0BCF
+ADC2[088] 	0FFF
+
+[35909 us] reading:
+ADC1[089] 	0FFF
+ADC2[089] 	0FFF
+
+[36009 us] reading:
+ADC1[090] 	0DDF
+ADC2[090] 	09CF
+
+[36109 us] reading:
+ADC1[091] 	080F
+ADC2[091] 	05C7
+
+[36209 us] reading:
+ADC1[092] 	056F
+ADC2[092] 	06FF
+
+[36309 us] reading:
+ADC1[093] 	0B0F
+ADC2[093] 	0ECF
+
+[36409 us] reading:
+ADC1[094] 	0FFF
+ADC2[094] 	0FFF
+
+[36509 us] reading:
+ADC1[095] 	0D8D
+ADC2[095] 	0A7F
+
+[36609 us] reading:
+ADC1[096] 	079F
+ADC2[096] 	04CF
+
+[36709 us] reading:
+ADC1[097] 	042F
+ADC2[097] 	05CF
+
+[36809 us] reading:
+ADC1[098] 	097B
+ADC2[098] 	0D3F
+
+[36909 us] reading:
+ADC1[099] 	0FFF
+ADC2[099] 	0F8F
+
+[37009 us] reading:
+ADC1[100] 	0E1F
+ADC2[100] 	0ABF
+
+[37109 us] reading:
+ADC1[101] 	070F
+ADC2[101] 	041D
+
+[37209 us] reading:
+ADC1[102] 	0317
+ADC2[102] 	0467
+
+[37309 us] reading:
+ADC1[103] 	07CF
+ADC2[103] 	0B6F
+
+[37409 us] reading:
+ADC1[104] 	0E0F
+ADC2[104] 	0E8F
+
+[37509 us] reading:
+ADC1[105] 	0D4F
+ADC2[105] 	0A1F
+
+[37609 us] reading:
+ADC1[106] 	062F
+ADC2[106] 	031B
+
+[37709 us] reading:
+ADC1[107] 	0225
+ADC2[107] 	031F
+
+[37809 us] reading:
+ADC1[108] 	063F
+ADC2[108] 	097F
+
+[37909 us] reading:
+ADC1[109] 	0BCF
+ADC2[109] 	0C5F
+
+[38009 us] reading:
+ADC1[110] 	0A8F
+ADC2[110] 	06FF
+
+[38109 us] reading:
+ADC1[111] 	02C5
+ADC2[111] 	0000
+
+[38209 us] reading:
+ADC1[112] 	0000
+ADC2[112] 	0000
+
+[38309 us] reading:
+ADC1[113] 	02BC
+ADC2[113] 	0607
+
+[38409 us] reading:
+ADC1[114] 	088F
+ADC2[114] 	08BF
+
+[38509 us] reading:
+ADC1[115] 	06FF
+ADC2[115] 	037F
+
+[38609 us] reading:
+ADC1[116] 	0000
+ADC2[116] 	0000
+
+[38709 us] reading:
+ADC1[117] 	0000
+ADC2[117] 	0000
+
+[38809 us] reading:
+ADC1[118] 	0227
+ADC2[118] 	058F
+
+[38909 us] reading:
+ADC1[119] 	07EB
+ADC2[119] 	084F
+
+[39009 us] reading:
+ADC1[120] 	068F
+ADC2[120] 	036B
+
+[39109 us] reading:
+ADC1[121] 	0000
+ADC2[121] 	0000
+
+[39209 us] reading:
+ADC1[122] 	0000
+ADC2[122] 	0000
+
+[39309 us] reading:
+ADC1[123] 	02FC
+ADC2[123] 	056F
+
+[39409 us] reading:
+ADC1[124] 	079F
+ADC2[124] 	0819
+
+[39509 us] reading:
+ADC1[125] 	061F
+ADC2[125] 	0305
+
+[39609 us] reading:
+ADC1[126] 	0000
+ADC2[126] 	0000
+
+[39709 us] reading:
+ADC1[127] 	005E
+ADC2[127] 	0123
+
+[39809 us] reading:
+ADC1[128] 	034E
+ADC2[128] 	06BB
+
+[39909 us] reading:
+ADC1[129] 	0849
+ADC2[129] 	08AF
+
+[40009 us] reading:
+ADC1[130] 	06EC
+ADC2[130] 	03CB
+
+[40109 us] reading:
+ADC1[131] 	0000
+ADC2[131] 	0000
+
+[40209 us] reading:
+ADC1[132] 	0000
+ADC2[132] 	010E
+
+[40309 us] reading:
+ADC1[133] 	039F
+ADC2[133] 	06EB
+
+[40409 us] reading:
+ADC1[134] 	09C1
+ADC2[134] 	0B6D
+
+[40509 us] reading:
+ADC1[135] 	08A8
+ADC2[135] 	04A9
+
+[40609 us] reading:
+ADC1[136] 	00BF
+ADC2[136] 	0000
+
+[40709 us] reading:
+ADC1[137] 	000D
+ADC2[137] 	0109
+
+[40809 us] reading:
+ADC1[138] 	03C5
+ADC2[138] 	07BF
+
+[40909 us] reading:
+ADC1[139] 	0ACF
+ADC2[139] 	0B3F
+
+[41009 us] reading:
+ADC1[140] 	09AF
+ADC2[140] 	06BF
+
+[41109 us] reading:
+ADC1[141] 	02BF
+ADC2[141] 	0025
+
+[41209 us] reading:
+ADC1[142] 	0000
+ADC2[142] 	019F
+
+[41309 us] reading:
+ADC1[143] 	04DF
+ADC2[143] 	08CF
+
+[41409 us] reading:
+ADC1[144] 	0BEF
+ADC2[144] 	0CDF
+
+[41509 us] reading:
+ADC1[145] 	0B6F
+ADC2[145] 	084B
+
+[41609 us] reading:
+ADC1[146] 	04C9
+ADC2[146] 	021E
+
+[41709 us] reading:
+ADC1[147] 	015E
+ADC2[147] 	02AF
+
+[41809 us] reading:
+ADC1[148] 	0609
+ADC2[148] 	0A1F
+
+[41909 us] reading:
+ADC1[149] 	0D3F
+ADC2[149] 	0E3F
+
+[42009 us] reading:
+ADC1[150] 	0CFF
+ADC2[150] 	0A4F
+
+[42109 us] reading:
+ADC1[151] 	070B
+ADC2[151] 	048F
+
+[42209 us] reading:
+ADC1[152] 	041F
+ADC2[152] 	05CF
+
+[42309 us] reading:
+ADC1[153] 	0920
+ADC2[153] 	0DCF
+
+[42409 us] reading:
+ADC1[154] 	0FFF
+ADC2[154] 	0FFF
+
+[42509 us] reading:
+ADC1[155] 	0D7F
+ADC2[155] 	0A7F
+
+[42609 us] reading:
+ADC1[156] 	07BB
+ADC2[156] 	054F
+
+[42709 us] reading:
+ADC1[157] 	057F
+ADC2[157] 	070F
+
+[42809 us] reading:
+ADC1[158] 	0B0F
+ADC2[158] 	0F3F
+
+[42909 us] reading:
+ADC1[159] 	0FFF
+ADC2[159] 	0F9F
+
+[43009 us] reading:
+ADC1[160] 	0D4F
+ADC2[160] 	0A6F
+
+[43109 us] reading:
+ADC1[161] 	078F
+ADC2[161] 	050F
+
+[43209 us] reading:
+ADC1[162] 	05DF
+ADC2[162] 	062D
+
+[43309 us] reading:
+ADC1[163] 	0A0B
+ADC2[163] 	0E7F
+
+[43409 us] reading:
+ADC1[164] 	0F1F
+ADC2[164] 	0FEF
+
+[43509 us] reading:
+ADC1[165] 	0D0F
+ADC2[165] 	0A8F
+
+[43609 us] reading:
+ADC1[166] 	080F
+ADC2[166] 	05CF
+
+[43709 us] reading:
+ADC1[167] 	057F
+ADC2[167] 	082D
+
+[43809 us] reading:
+ADC1[168] 	0B9F
+ADC2[168] 	0F6F
+
+[43909 us] reading:
+ADC1[169] 	0FCF
+ADC2[169] 	0F6F
+
+[44009 us] reading:
+ADC1[170] 	0D9F
+ADC2[170] 	0ACF
+
+[44109 us] reading:
+ADC1[171] 	07BF
+ADC2[171] 	056F
+
+[44209 us] reading:
+ADC1[172] 	05AF
+ADC2[172] 	06EF
+
+[44309 us] reading:
+ADC1[173] 	0AFF
+ADC2[173] 	0F2F
+
+[44409 us] reading:
+ADC1[174] 	0FEF
+ADC2[174] 	0FBF
+
+[44509 us] reading:
+ADC1[175] 	0D4F
+ADC2[175] 	0A9D
+
+[44609 us] reading:
+ADC1[176] 	078F
+ADC2[176] 	04F9
+
+[44709 us] reading:
+ADC1[177] 	05E9
+ADC2[177] 	062F
+
+[44809 us] reading:
+ADC1[178] 	0A00
+ADC2[178] 	0E00
+
+[44909 us] reading:
+ADC1[179] 	0F9F
+ADC2[179] 	0F4F
+
+[45009 us] reading:
+ADC1[180] 	0CDF
+ADC2[180] 	0A2F
+
+[45109 us] reading:
+ADC1[181] 	069D
+ADC2[181] 	043D
+
+[45209 us] reading:
+ADC1[182] 	0339
+ADC2[182] 	050F
+
+[45309 us] reading:
+ADC1[183] 	086F
+ADC2[183] 	0C2F
+
+[45409 us] reading:
+ADC1[184] 	0EFF
+ADC2[184] 	0F6F
+
+[45509 us] reading:
+ADC1[185] 	0D2F
+ADC2[185] 	0A00
+
+[45609 us] reading:
+ADC1[186] 	062F
+ADC2[186] 	034B
+
+[45709 us] reading:
+ADC1[187] 	0274
+ADC2[187] 	035F
+
+[45809 us] reading:
+ADC1[188] 	067F
+ADC2[188] 	0ACB
+
+[45909 us] reading:
+ADC1[189] 	0CEF
+ADC2[189] 	0E00
+
+[46009 us] reading:
+ADC1[190] 	0C8D
+ADC2[190] 	092F
+
+[46109 us] reading:
+ADC1[191] 	04EF
+ADC2[191] 	01FA
+
+[46209 us] reading:
+ADC1[192] 	0099
+ADC2[192] 	01BF
+
+[46309 us] reading:
+ADC1[193] 	043D
+ADC2[193] 	079F
+
+[46409 us] reading:
+ADC1[194] 	0A8F
+ADC2[194] 	0B1F
+
+[46509 us] reading:
+ADC1[195] 	093F
+ADC2[195] 	059D
+
+[46609 us] reading:
+ADC1[196] 	017D
+ADC2[196] 	0000
+
+[46709 us] reading:
+ADC1[197] 	0000
+ADC2[197] 	00BF
+
+[46809 us] reading:
+ADC1[198] 	036F
+ADC2[198] 	0689
+
+[46909 us] reading:
+ADC1[199] 	08AF
+ADC2[199] 	095F
+
+[47009 us] reading:
+ADC1[200] 	078F
+ADC2[200] 	03FF
+
+[47109 us] reading:
+ADC1[201] 	0059
+ADC2[201] 	0000
+
+[47209 us] reading:
+ADC1[202] 	0000
+ADC2[202] 	00DB
+
+[47309 us] reading:
+ADC1[203] 	03AF
+ADC2[203] 	06CF
+
+[47409 us] reading:
+ADC1[204] 	090F
+ADC2[204] 	093D
+
+[47509 us] reading:
+ADC1[205] 	078F
+ADC2[205] 	032F
+
+[47609 us] reading:
+ADC1[206] 	0000
+ADC2[206] 	0000
+
+[47709 us] reading:
+ADC1[207] 	002D
+ADC2[207] 	00DD
+
+[47809 us] reading:
+ADC1[208] 	0315
+ADC2[208] 	0549
+
+[47909 us] reading:
+ADC1[209] 	088B
+ADC2[209] 	086F
+
+[48009 us] reading:
+ADC1[210] 	06CF
+ADC2[210] 	031B
+
+[48109 us] reading:
+ADC1[211] 	0000
+ADC2[211] 	0000
+
+[48209 us] reading:
+ADC1[212] 	0000
+ADC2[212] 	00BB
+
+[48309 us] reading:
+ADC1[213] 	0319
+ADC2[213] 	0629
+
+[48409 us] reading:
+ADC1[214] 	08ED
+ADC2[214] 	091F
+
+[48509 us] reading:
+ADC1[215] 	07CF
+ADC2[215] 	0449
+
+[48609 us] reading:
+ADC1[216] 	0000
+ADC2[216] 	0000
+
+[48709 us] reading:
+ADC1[217] 	0039
+ADC2[217] 	0173
+
+[48809 us] reading:
+ADC1[218] 	0409
+ADC2[218] 	0789
+
+[48909 us] reading:
+ADC1[219] 	08AF
+ADC2[219] 	0A7D
+
+[49009 us] reading:
+ADC1[220] 	08DF
+ADC2[220] 	05BB
+
+[49109 us] reading:
+ADC1[221] 	0125
+ADC2[221] 	0000
+
+[49209 us] reading:
+ADC1[222] 	0033
+ADC2[222] 	00AC
+
+[49309 us] reading:
+ADC1[223] 	0477
+ADC2[223] 	07CF
+
+[49409 us] reading:
+ADC1[224] 	0A8F
+ADC2[224] 	0BDF
+
+[49509 us] reading:
+ADC1[225] 	0A4D
+ADC2[225] 	076F
+
+[49609 us] reading:
+ADC1[226] 	03CF
+ADC2[226] 	00FF
+
+[49709 us] reading:
+ADC1[227] 	0076
+ADC2[227] 	01E3
+
+[49809 us] reading:
+ADC1[228] 	051F
+ADC2[228] 	08CB
+
+[49909 us] reading:
+ADC1[229] 	0BDF
+ADC2[229] 	0CDF
+
+[50009 us] reading:
+ADC1[230] 	0BFF
+ADC2[230] 	08DC
+
+[30409 us] reading:
+ADC1[231] 	04FF
+ADC2[231] 	0247
+
+[30509 us] reading:
+ADC1[232] 	0215
+ADC2[232] 	0305
+
+[30609 us] reading:
+ADC1[233] 	072F
+ADC2[233] 	0B2F
+
+[30709 us] reading:
+ADC1[234] 	0E6F
+ADC2[234] 	0F8F
+
+[30809 us] reading:
+ADC1[235] 	0D2F
+ADC2[235] 	0ADF
+
+[30909 us] reading:
+ADC1[236] 	078F
+ADC2[236] 	0545
+
+[31009 us] reading:
+ADC1[237] 	04D7
+ADC2[237] 	062F
+
+[31109 us] reading:
+ADC1[238] 	0A2F
+ADC2[238] 	0E5F
+
+[31209 us] reading:
+ADC1[239] 	0FEC
+ADC2[239] 	0F8F
+
+[31309 us] reading:
+ADC1[240] 	0D49
+ADC2[240] 	0AFF
+
+[31409 us] reading:
+ADC1[241] 	07FB
+ADC2[241] 	055F
+
+[31509 us] reading:
+ADC1[242] 	0560
+ADC2[242] 	06BF
+
+[31609 us] reading:
+ADC1[243] 	0B3F
+ADC2[243] 	0FCF
+
+[31709 us] reading:
+ADC1[244] 	0FFF
+ADC2[244] 	0F6F
+
+[31809 us] reading:
+ADC1[245] 	0CFF
+ADC2[245] 	0ADF
+
+[31909 us] reading:
+ADC1[246] 	07C7
+ADC2[246] 	05BC
+
+[32009 us] reading:
+ADC1[247] 	056D
+ADC2[247] 	07AF
+
+[32109 us] reading:
+ADC1[248] 	0BA8
+ADC2[248] 	0FBF
+
+[32209 us] reading:
+ADC1[249] 	0FFF
+ADC2[249] 	0F1F
+

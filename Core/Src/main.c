@@ -39,7 +39,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define SAMPLES 5*2
+#define MAX_SAMPLES 250
 #define CPU_FREQUENCY 72000000
 /* USER CODE END PD */
 
@@ -58,9 +58,11 @@ extern TIM_HandleTypeDef htim4;
 
 enum time_base {TENTH_OF_MICROSECOND, MICROSECOND, TENTH_MILLISECOND};
 enum signal_frequency {ONE_MHZ, ONE_HUNDRED_KHZ, TEN_KHZ, ONE_KHZ, ONE_HUNDRED_HZ, SIXTY_HZ};
+enum signal_samples {TWENTY, TEN, FIVE, TWO};
 
-volatile uint32_t DMA_ADC_buffer[SAMPLES/2] = {[0 ... SAMPLES/2-1] = 9999};
-volatile uint32_t DMA_ADC_timming_buffer[SAMPLES/2] = {[0 ... SAMPLES/2-1] = 9999};
+volatile uint32_t DMA_ADC_buffer[MAX_SAMPLES] = {[0 ... MAX_SAMPLES-1] = 0x00000000};
+volatile uint32_t DMA_ADC_timming_buffer[MAX_SAMPLES] = {[0 ... MAX_SAMPLES-1] = 0x00000000};
+
 volatile uint8_t sample_count = 0;
 volatile uint8_t adc_done = 0;
 /* USER CODE END PV */
@@ -73,11 +75,10 @@ int __io_putchar(int ch);
 int _write(int file, char *ptr, int len);
 
 HAL_StatusTypeDef ADC_base_TIM3_config(TIM_HandleTypeDef *htim3,
-  enum signal_frequency src_frequency,
-  uint16_t samples_per_period);
+                                       enum signal_frequency src_frequency,
+                                       enum signal_samples samples_per_period);
 
-HAL_StatusTypeDef ADC_Dual_config(ADC_HandleTypeDef *adc1, ADC_HandleTypeDef *adc2,
-  enum signal_frequency src_frequency, uint16_t samples_per_period);
+HAL_StatusTypeDef ADC_Dual_config(ADC_HandleTypeDef *adc1, ADC_HandleTypeDef *adc2);
 
 HAL_StatusTypeDef Start_Dual_ADC_DMA(enum signal_frequency src_frequency,
   uint16_t samples_per_period,
@@ -124,9 +125,19 @@ int _write(int file, char *ptr, int len) {
 //   return len;
 // }
 
+/**
+ * Configures TIM3 to trigger samples_per_period*src_frequency times per second,
+ * where src_frequency is based on signal_frequency enum and and samples_per_period
+ * in signal_samples enum
+ *
+ * @param htim3 Handler for TIM3
+ * @param src_frequency Frequency from the base signal for exitation
+ * @param samples_per_period Number of samples per period of the source frequency
+ * @return HAL_OK on success, HAL_ERROR on failure
+ */
 HAL_StatusTypeDef ADC_base_TIM3_config(TIM_HandleTypeDef *htim3,
-  enum signal_frequency src_frequency,
-  uint16_t samples_per_period)
+                                       enum signal_frequency src_frequency,
+                                       enum signal_samples samples_per_period)
 {
   TIM_ClockConfigTypeDef sClockSourceConfig = {0};
   TIM_MasterConfigTypeDef sMasterConfig = {0};
@@ -134,14 +145,30 @@ HAL_StatusTypeDef ADC_base_TIM3_config(TIM_HandleTypeDef *htim3,
   uint32_t timer_frequency = 0;
   switch (src_frequency) {
     case ONE_KHZ:
-      timer_frequency = 1000 * samples_per_period;
+      timer_frequency = 1000;
     break;
     case ONE_HUNDRED_HZ:
-      timer_frequency = 100 * samples_per_period;
+      timer_frequency = 100;
     break;
     case SIXTY_HZ:
-      timer_frequency = 60 * samples_per_period;
+      timer_frequency = 60;
     break;
+    default:
+      return HAL_ERROR;
+  }
+
+  switch (samples_per_period) {
+    case TWENTY:
+      timer_frequency = timer_frequency * 20;
+    break;
+    case TEN:
+      timer_frequency = timer_frequency * 10;
+    break;
+    case FIVE:
+      timer_frequency = timer_frequency * 5;
+    break;
+    case TWO:
+      timer_frequency = timer_frequency * 2;
     default:
       return HAL_ERROR;
   }
@@ -193,6 +220,19 @@ HAL_StatusTypeDef ADC_base_TIM3_config(TIM_HandleTypeDef *htim3,
   return HAL_OK;
 }
 
+/**
+ * Configures TIM4 for time base, each count is a time_base step, up to 0xFFFF where
+ * the timer overflows and starts counting from 0.
+ *
+ * Counter must be reset with htim4.Instance->CNT = 0 to ensure the value
+ * has a known reference.
+ *
+ * Read is done the same way, accessing htim4.Instance->CNT
+ *
+ * @param htim4 handler address for timer 4
+ * @param time_base enum with clock step size
+ * @return HAL_OK on success, HAL_ERROR on failure
+ */
 HAL_StatusTypeDef time_base_config(TIM_HandleTypeDef *htim4, enum time_base time_base) {
   TIM_ClockConfigTypeDef sClockSourceConfig = {0};
   TIM_MasterConfigTypeDef sMasterConfig = {0};
@@ -200,13 +240,13 @@ HAL_StatusTypeDef time_base_config(TIM_HandleTypeDef *htim4, enum time_base time
   uint32_t timer_frequency = 0;
   switch (time_base) {
     case TENTH_OF_MICROSECOND:
-      timer_frequency = 10e6;
+      timer_frequency = 10000000;
     break;
     case MICROSECOND:
-      timer_frequency = 1e6;
+      timer_frequency = 1000000;
     break;
     case TENTH_MILLISECOND:
-      timer_frequency = 10e3;
+      timer_frequency = 10000;
     break;
     default:
       return HAL_ERROR;
@@ -251,9 +291,7 @@ HAL_StatusTypeDef time_base_config(TIM_HandleTypeDef *htim4, enum time_base time
 
 HAL_StatusTypeDef ADC_Dual_config(
   ADC_HandleTypeDef *hadc1,
-  ADC_HandleTypeDef *hadc2,
-  enum signal_frequency src_frequency,
-  uint16_t samples_per_period)
+  ADC_HandleTypeDef *hadc2)
 {
   ADC_MultiModeTypeDef multimode = {0};
   ADC_ChannelConfTypeDef sConfig = {0};
@@ -320,6 +358,28 @@ HAL_StatusTypeDef ADC_Dual_config(
   return HAL_OK;
 }
 
+/**
+ * Configures and starts ADC in dual mode with TIM3 trigger, DMA to automatically save all acquisitions
+ * in the DMA_ADC_buffer[] and TIM4 as time base for each acquisition.
+ *
+ * To use TIM4 as time base, reading the time of the ADC acquisition, read TIM4 on each ADC sample trigger
+ * of TIM3 overflow by defining HAL_TIM_PeriodElapsedCallback() callback function. Use the callback to
+ * accumulate sample_count, and use sample_count as index for DMA_ADC_timming_buffer[], which is to be
+ * updated with TIM4 count.
+ *
+ * HAL_ADC_ConvCpltCallback() MUST be set to stop the timers TIM3 with interruptions and TIM4, stop
+ * the DMA multimode conversions and also stop the ADC. It's on the conversion complete callback that
+ * the flag adc_done must be set to '1', which is always cleared by this function.
+ *
+ * Error messages are sent with printf(). Change _write() to reflect the desired output.
+ *
+ * @param src_frequency signal_frequency enum to define frequency of the sampled signal
+ * @param samples_per_period signal_samples enum to define total samples per period
+ * @param number_of_samples total count of samples acquired on dual mode, must be less than MAX_SAMPLES¸
+ * @param DMA_ADC_buffer buffer of size MAX_SIZE of type uint32_t for acquired values.
+ * ADC1 is on lower 16 bits and ADC2 on higher 16 bits.
+ * @return HAL_OK on success, HAL_ERROR on failure
+ */
 HAL_StatusTypeDef Start_Dual_ADC_DMA(
   const enum signal_frequency src_frequency,
   const uint16_t samples_per_period,
@@ -327,22 +387,42 @@ HAL_StatusTypeDef Start_Dual_ADC_DMA(
   uint32_t* DMA_ADC_buffer)
 {
 
-  ADC_base_TIM3_config(&htim3, src_frequency, samples_per_period);
-  ADC_Dual_config(&hadc1, &hadc2, src_frequency, samples_per_period);
-  time_base_config(&htim4, MICROSECOND);
+  if (number_of_samples > MAX_SAMPLES) {
+    printf ("Error: Number of samples is greater than MAX_SAMPLES\r\n");
+    return HAL_ERROR;
+  }
 
-  HAL_ADCEx_Calibration_Start(&hadc1);
-  HAL_ADCEx_Calibration_Start(&hadc2);
+  if (ADC_base_TIM3_config(&htim3, src_frequency, samples_per_period) != HAL_OK ||
+      time_base_config(&htim4, MICROSECOND) != HAL_OK) {
+    printf("Error: Failed to configure timers\r\n");
+    return HAL_ERROR;
+  }
 
-  HAL_ADC_Start(&hadc2);
-  HAL_ADCEx_MultiModeStart_DMA(&hadc1, DMA_ADC_buffer, number_of_samples);
+  if (ADC_Dual_config(&hadc1, &hadc2) != HAL_OK) {
+    printf("Error: Failed to configure ADC dual mode\r\n");
+    return HAL_ERROR;
+  }
 
+  if (HAL_ADCEx_Calibration_Start(&hadc1) != HAL_OK || HAL_ADCEx_Calibration_Start(&hadc2) != HAL_OK) {
+    printf("Error: Failed to calibrate ADC\r\n");
+    return HAL_ERROR;
+  }
+
+  if (HAL_ADC_Start(&hadc2) != HAL_OK ||
+      HAL_ADCEx_MultiModeStart_DMA(&hadc1, DMA_ADC_buffer, number_of_samples*2) != HAL_OK) {
+    printf("Error: Failed to start ADC\r\n");
+    return HAL_ERROR;
+  }
+
+  // Clean state flags
   adc_done = 0;
-  sample_count=0;
-
+  sample_count = 0;
   htim4.Instance->CNT = 0UL;
-  HAL_TIM_Base_Start(&htim4);
-  HAL_TIM_Base_Start_IT(&htim3);
+
+  if (HAL_TIM_Base_Start_IT(&htim4) != HAL_OK || HAL_TIM_Base_Start_IT(&htim3) != HAL_OK) {
+    printf("Error: Failed to start timers\r\n");
+    return HAL_ERROR;
+  }
   return HAL_OK;
 }
 
@@ -350,8 +430,9 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 {
   if (hadc->Instance == ADC1)
   {
-    HAL_TIM_Base_Stop_IT(&htim3);
+    HAL_TIM_Base_Stop(&htim4);
     HAL_ADCEx_MultiModeStop_DMA(hadc);
+    HAL_TIM_Base_Stop_IT(&htim3);
     HAL_ADC_Stop(&hadc2);
     adc_done = 1;
   }
@@ -361,33 +442,40 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
     if (htim->Instance == TIM3) {
     	HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
         DMA_ADC_timming_buffer[sample_count] = htim4.Instance->CNT;
-        printf("Sample count: %d\r\n", sample_count);
         sample_count++;
     }
+    if (htim->Instance == TIM4) {
+    	printf("Error: TIM4 overflow");
+    	htim->Instance->CNT = 0;
+    }
+
 }
 
 void HAL_ADC_ErrorCallback(ADC_HandleTypeDef *hadc) {
-    if (hadc->Instance == ADC1) {
-        printf("[%lu ms] ADC1 Error! Code: 0x%lX\r\n", HAL_GetTick(), hadc->ErrorCode);
-
-        if (hadc->ErrorCode & HAL_ADC_ERROR_OVR) {
-            printf(" - Overrun error (new data before old was read)\r\n");
-        }
-
-        if (hadc->ErrorCode & HAL_ADC_ERROR_DMA) {
-            printf(" - DMA transfer error\r\n");
-        }
-
-        if (hadc->ErrorCode & HAL_ADC_ERROR_INTERNAL) {
-            printf(" - Internal ADC HAL error\r\n");
-        }
-
-        if (hadc->ErrorCode == HAL_ADC_ERROR_NONE) {
-            printf(" - No error\r\n");
-        }
+  printf("[%lu ms] Error: ", HAL_GetTick());
+  if (hadc->Instance == ADC1) {
+    printf("ADC1 ");
     }
-}
+  else if (hadc->Instance == ADC2) {
+      printf("ADC2 ");
+  }
+  printf("Code: 0x%lX\r\n", hadc->ErrorCode);
+  if (hadc->ErrorCode & HAL_ADC_ERROR_OVR) {
+      printf(" - Overrun error (new data before old was read)\r\n");
+  }
 
+  if (hadc->ErrorCode & HAL_ADC_ERROR_DMA) {
+      printf(" - DMA transfer error\r\n");
+  }
+
+  if (hadc->ErrorCode & HAL_ADC_ERROR_INTERNAL) {
+      printf(" - Internal ADC HAL error\r\n");
+  }
+
+  if (hadc->ErrorCode == HAL_ADC_ERROR_NONE) {
+      printf(" - No error\r\n");
+  }
+}
 
 /* USER CODE END 0 */
 
@@ -425,10 +513,11 @@ int main(void)
   MX_ADC2_Init();
   MX_USB_DEVICE_Init();
   /* USER CODE BEGIN 2 */
+  HAL_Delay(1000);
   printf("\r"); // start serial
   printf("Start Program:\r\n");
 
-  Start_Dual_ADC_DMA(ONE_KHZ,10, SAMPLES, DMA_ADC_buffer);
+  Start_Dual_ADC_DMA(ONE_KHZ, TEN, MAX_SAMPLES, DMA_ADC_buffer);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -439,7 +528,9 @@ int main(void)
     {
       HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, 1);
 
-      for (int i = 0; i < SAMPLES/2; i++) {
+      printf("Sample total: %u\r\n", sample_count + 1);
+
+      for (int i = 0; i < MAX_SAMPLES; i++) {
         uint16_t val_adc1 = DMA_ADC_buffer[i] & 0xFFFF;
         uint16_t val_adc2 = (DMA_ADC_buffer[i] >> 16) & 0xFFFF;
 
@@ -450,8 +541,8 @@ int main(void)
 
       HAL_Delay(1000);
       Start_Dual_ADC_DMA(ONE_KHZ,
-        10,
-        SAMPLES,
+        TEN,
+        MAX_SAMPLES,
         DMA_ADC_buffer); // restart acquisition
     }
     /* USER CODE END WHILE */
