@@ -51,10 +51,17 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
+extern USBD_HandleTypeDef hUsbDeviceFS;
+
+extern TIM_HandleTypeDef htim3;
+extern TIM_HandleTypeDef htim4;
+
+enum time_base {TENTH_OF_MICROSECOND, MICROSECOND, TENTH_MILLISECOND};
 enum signal_frequency {ONE_MHZ, ONE_HUNDRED_KHZ, TEN_KHZ, ONE_KHZ, ONE_HUNDRED_HZ, SIXTY_HZ};
 
-uint32_t DMA_ADC_buffer[SAMPLES/2] = {[0 ... SAMPLES/2-1] = 9999};
-uint32_t DMA_ADC_timming_buffer[SAMPLES/2] = {[0 ... SAMPLES/2-1] = 9999};
+volatile uint32_t DMA_ADC_buffer[SAMPLES/2] = {[0 ... SAMPLES/2-1] = 9999};
+volatile uint32_t DMA_ADC_timming_buffer[SAMPLES/2] = {[0 ... SAMPLES/2-1] = 9999};
+volatile uint8_t sample_count = 0;
 volatile uint8_t adc_done = 0;
 /* USER CODE END PV */
 
@@ -65,7 +72,7 @@ int __io_putchar(int ch);
 
 int _write(int file, char *ptr, int len);
 
-HAL_StatusTypeDef TIM3_config(TIM_HandleTypeDef *htim3,
+HAL_StatusTypeDef ADC_base_TIM3_config(TIM_HandleTypeDef *htim3,
   enum signal_frequency src_frequency,
   uint16_t samples_per_period);
 
@@ -101,8 +108,23 @@ int _write(int file, char *ptr, int len) {
   return len;
 }
 
+//@TODO checar retorno das funções
+// int _write(int file, char *ptr, int len) {
+//   if (hUsbDeviceFS.dev_state == USBD_STATE_CONFIGURED) {
+//     CDC_Transmit_FS((uint8_t*)ptr, len);
+//   }
+//   return len;
+// }
+//
+// int _read(int file, char *ptr, int len) {
+//   if (hUsbDeviceFS.dev_state == USBD_STATE_CONFIGURED) {
+//     USBD_CDC_SetRxBuffer(&hUsbDeviceFS, ptr);
+//     USBD_CDC_ReceivePacket(&hUsbDeviceFS);
+//   }
+//   return len;
+// }
 
-HAL_StatusTypeDef TIM3_config(TIM_HandleTypeDef *htim3,
+HAL_StatusTypeDef ADC_base_TIM3_config(TIM_HandleTypeDef *htim3,
   enum signal_frequency src_frequency,
   uint16_t samples_per_period)
 {
@@ -112,7 +134,7 @@ HAL_StatusTypeDef TIM3_config(TIM_HandleTypeDef *htim3,
   uint32_t timer_frequency = 0;
   switch (src_frequency) {
     case ONE_KHZ:
-      timer_frequency = 1000 * samples_per_period; // Sampling frequency in Hz
+      timer_frequency = 1000 * samples_per_period;
     break;
     case ONE_HUNDRED_HZ:
       timer_frequency = 100 * samples_per_period;
@@ -124,32 +146,27 @@ HAL_StatusTypeDef TIM3_config(TIM_HandleTypeDef *htim3,
       return HAL_ERROR;
   }
 
-  if (timer_frequency > 100e3) {
-         printf("Error: Sampling frequency %lu not supported.\r\n", timer_frequency);
-         return HAL_ERROR;
-  }
-
   uint32_t prescaler = 0;
   uint32_t period = 0;
 
   // (CPU_FREQUENCY/((1+prescaler)*(1+period)) == timer_frequency)
   if (CPU_FREQUENCY/timer_frequency > 0xFFFF) {
-    prescaler = 0xFFFF;
+    period = 0xFFFF;
     if (CPU_FREQUENCY/((1+prescaler)*timer_frequency) - 1 > 0xFFFF) {
       printf("Error: Sampling frequency %lu beyond period limit for TIM3\r\n", timer_frequency);
       return HAL_ERROR;
     }
-    period = CPU_FREQUENCY/((1+prescaler)*timer_frequency) - 1;
+    prescaler = CPU_FREQUENCY/((1+prescaler)*timer_frequency) - 1;
   }
   else {
-    period = 0;
-    prescaler = CPU_FREQUENCY/timer_frequency - 1;
+    prescaler = 0;
+    period = CPU_FREQUENCY/timer_frequency - 1;
   }
 
   htim3->Instance = TIM3;
-  htim3->Init.Prescaler = period;
+  htim3->Init.Prescaler = prescaler;
   htim3->Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim3->Init.Period = prescaler;
+  htim3->Init.Period = period;
   htim3->Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim3->Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
 
@@ -173,6 +190,62 @@ HAL_StatusTypeDef TIM3_config(TIM_HandleTypeDef *htim3,
     return HAL_ERROR;
   }
 
+  return HAL_OK;
+}
+
+HAL_StatusTypeDef time_base_config(TIM_HandleTypeDef *htim4, enum time_base time_base) {
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  uint32_t timer_frequency = 0;
+  switch (time_base) {
+    case TENTH_OF_MICROSECOND:
+      timer_frequency = 10e6;
+    break;
+    case MICROSECOND:
+      timer_frequency = 1e6;
+    break;
+    case TENTH_MILLISECOND:
+      timer_frequency = 10e3;
+    break;
+    default:
+      return HAL_ERROR;
+  }
+
+  uint32_t prescaler = 0;
+  uint32_t period = 0;
+
+  // (CPU_FREQUENCY/((1+prescaler)*(1+period)) == timer_frequency)
+  if (CPU_FREQUENCY/timer_frequency > 0xFFFF) {
+      printf("Error: Time base frequency %lu beyond prescaler limit for TIM4\r\n", timer_frequency);
+      return HAL_ERROR;
+  }
+  // Count goes up un time base clock
+  prescaler = CPU_FREQUENCY/timer_frequency - 1;
+  period = 0xFFFF;
+
+  htim4->Instance = TIM4;
+  htim4->Init.Prescaler = prescaler;
+  htim4->Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim4->Init.Period = period;
+  htim4->Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim4->Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+
+  if (HAL_TIM_Base_Init(htim4) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(htim4, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(htim4, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
   return HAL_OK;
 }
 
@@ -253,9 +326,10 @@ HAL_StatusTypeDef Start_Dual_ADC_DMA(
   const uint32_t number_of_samples,
   uint32_t* DMA_ADC_buffer)
 {
-  adc_done = 0;
-  TIM3_config(&htim3, src_frequency, samples_per_period);
+
+  ADC_base_TIM3_config(&htim3, src_frequency, samples_per_period);
   ADC_Dual_config(&hadc1, &hadc2, src_frequency, samples_per_period);
+  time_base_config(&htim4, MICROSECOND);
 
   HAL_ADCEx_Calibration_Start(&hadc1);
   HAL_ADCEx_Calibration_Start(&hadc2);
@@ -263,6 +337,11 @@ HAL_StatusTypeDef Start_Dual_ADC_DMA(
   HAL_ADC_Start(&hadc2);
   HAL_ADCEx_MultiModeStart_DMA(&hadc1, DMA_ADC_buffer, number_of_samples);
 
+  adc_done = 0;
+  sample_count=0;
+
+  htim4.Instance->CNT = 0UL;
+  HAL_TIM_Base_Start(&htim4);
   HAL_TIM_Base_Start_IT(&htim3);
   return HAL_OK;
 }
@@ -281,12 +360,9 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
     if (htim->Instance == TIM3) {
     	HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
-      for (int i = 0; i < SAMPLES/2; i++) {
-        if (DMA_ADC_timming_buffer[i] == 9999){
-        	DMA_ADC_timming_buffer[i] = HAL_GetTick();
-        	break;
-        }
-      }
+        DMA_ADC_timming_buffer[sample_count] = htim4.Instance->CNT;
+        printf("Sample count: %d\r\n", sample_count);
+        sample_count++;
     }
 }
 
@@ -348,13 +424,11 @@ int main(void)
   MX_ADC1_Init();
   MX_ADC2_Init();
   MX_USB_DEVICE_Init();
-  MX_TIM3_Init();
   /* USER CODE BEGIN 2 */
   printf("\r"); // start serial
   printf("Start Program:\r\n");
 
   Start_Dual_ADC_DMA(ONE_KHZ,10, SAMPLES, DMA_ADC_buffer);
-  HAL_TIM_Base_Start_IT(&htim3);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -369,7 +443,7 @@ int main(void)
         uint16_t val_adc1 = DMA_ADC_buffer[i] & 0xFFFF;
         uint16_t val_adc2 = (DMA_ADC_buffer[i] >> 16) & 0xFFFF;
 
-        printf("\r\n[%04lu ms] reading:\r\n", DMA_ADC_timming_buffer[i]);
+        printf("\r\n[%04lu us] reading:\r\n", DMA_ADC_timming_buffer[i]);
         printf("ADC1[%03d] \t%04X\r\n", i, val_adc1);
         printf("ADC2[%03d] \t%04X\r\n", i, val_adc2);
       }
