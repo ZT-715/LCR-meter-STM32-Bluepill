@@ -31,7 +31,9 @@
 
 /* USER CODE BEGIN PV */
 /* Private variables ---------------------------------------------------------*/
-
+volatile char rx_buffer[RX_BUF_LEN];
+uint8_t rx_index = 0;
+volatile uint8_t command_ready = 0;
 /* USER CODE END PV */
 
 /** @addtogroup STM32_USB_OTG_DEVICE_LIBRARY
@@ -259,6 +261,15 @@ static int8_t CDC_Control_FS(uint8_t cmd, uint8_t* pbuf, uint16_t length)
 static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
 {
   /* USER CODE BEGIN 6 */
+  for (uint32_t i = 0; i < *Len; ++i) {
+    if (Buf[i] == '\n' || Buf[i] == '\r') {
+      rx_buffer[rx_index] = '\0';
+      command_ready = 1;
+      rx_index = 0;
+    } else if (rx_index < RX_BUF_LEN - 1) {
+      rx_buffer[rx_index++] = Buf[i];
+    }
+  }
   USBD_CDC_SetRxBuffer(&hUsbDeviceFS, &Buf[0]);
   USBD_CDC_ReceivePacket(&hUsbDeviceFS);
   return (USBD_OK);

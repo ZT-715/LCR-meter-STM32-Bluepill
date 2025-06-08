@@ -40,6 +40,7 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define MAX_SAMPLES 250
+
 #define CPU_FREQUENCY 72000000
 /* USER CODE END PD */
 
@@ -52,6 +53,8 @@
 
 /* USER CODE BEGIN PV */
 extern USBD_HandleTypeDef hUsbDeviceFS;
+extern volatile char rx_buffer[RX_BUF_LEN];
+extern volatile uint8_t command_ready;
 
 extern TIM_HandleTypeDef htim3;
 extern TIM_HandleTypeDef htim4;
@@ -63,20 +66,22 @@ enum signal_samples {TWENTY, TEN, FIVE, TWO};
 volatile uint32_t DMA_ADC_buffer[MAX_SAMPLES] = {[0 ... MAX_SAMPLES-1] = 0x00000000};
 volatile uint32_t DMA_ADC_timming_buffer[MAX_SAMPLES] = {[0 ... MAX_SAMPLES-1] = 0x00000000};
 
-volatile uint8_t sample_count = 0;
+volatile uint32_t sample_count = 0;
 volatile uint8_t adc_done = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
-int __io_putchar(int ch);
+// int __io_putchar(int ch);
 
 int _write(int file, char *ptr, int len);
 
 HAL_StatusTypeDef ADC_base_TIM3_config(TIM_HandleTypeDef *htim3,
                                        enum signal_frequency src_frequency,
                                        enum signal_samples samples_per_period);
+
+HAL_StatusTypeDef time_base_config(TIM_HandleTypeDef *htim4, enum time_base time_base);
 
 HAL_StatusTypeDef ADC_Dual_config(ADC_HandleTypeDef *adc1, ADC_HandleTypeDef *adc2);
 
@@ -86,44 +91,38 @@ HAL_StatusTypeDef Start_Dual_ADC_DMA(enum signal_frequency src_frequency,
   uint32_t* DMA_ADC_buffer);
 
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc);
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim);
+void HAL_ADC_ErrorCallback(ADC_HandleTypeDef *hadc);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 // Function may conflict with syscalls.c, erase them in this case.
 
-int __io_putchar(int ch) {
-  while (ITM->PORT[0U].u32 == 0UL) {
-    __NOP();
-  }
-  ITM->PORT[0U].u8 = (uint8_t)ch;
-  return ch;
-}
+// int __io_putchar(int ch) {
+//   while (ITM->PORT[0U].u32 == 0UL) {
+//     __NOP();
+//   }
+//   ITM->PORT[0U].u8 = (uint8_t)ch;
+//   return ch;
+// }
 
 // Function may conflict with syscalls.c, erase them in this case.
+// int _write(int file, char *ptr, int len) {
+//   for (int i = 0; i < len; i++) {
+//     __io_putchar(*ptr);
+//     ptr++;
+//   }
+//   return len;
+// }
+
+//@TODO checar retorno das funções
 int _write(int file, char *ptr, int len) {
-  for (int i = 0; i < len; i++) {
-    __io_putchar(*ptr);
-    ptr++;
+  if (hUsbDeviceFS.dev_state == USBD_STATE_CONFIGURED) {
+    CDC_Transmit_FS((uint8_t*)ptr, len);
   }
   return len;
 }
-
-//@TODO checar retorno das funções
-// int _write(int file, char *ptr, int len) {
-//   if (hUsbDeviceFS.dev_state == USBD_STATE_CONFIGURED) {
-//     CDC_Transmit_FS((uint8_t*)ptr, len);
-//   }
-//   return len;
-// }
-//
-// int _read(int file, char *ptr, int len) {
-//   if (hUsbDeviceFS.dev_state == USBD_STATE_CONFIGURED) {
-//     USBD_CDC_SetRxBuffer(&hUsbDeviceFS, ptr);
-//     USBD_CDC_ReceivePacket(&hUsbDeviceFS);
-//   }
-//   return len;
-// }
 
 /**
  * Configures TIM3 to trigger samples_per_period*src_frequency times per second,
@@ -384,9 +383,7 @@ HAL_StatusTypeDef Start_Dual_ADC_DMA(
   const enum signal_frequency src_frequency,
   const uint16_t samples_per_period,
   const uint32_t number_of_samples,
-  uint32_t* DMA_ADC_buffer)
-{
-
+  uint32_t* DMA_ADC_buffer) {
   if (number_of_samples > MAX_SAMPLES) {
     printf ("Error: Number of samples is greater than MAX_SAMPLES\r\n");
     return HAL_ERROR;
@@ -396,7 +393,7 @@ HAL_StatusTypeDef Start_Dual_ADC_DMA(
       time_base_config(&htim4, MICROSECOND) != HAL_OK) {
     printf("Error: Failed to configure timers\r\n");
     return HAL_ERROR;
-  }
+      }
 
   if (ADC_Dual_config(&hadc1, &hadc2) != HAL_OK) {
     printf("Error: Failed to configure ADC dual mode\r\n");
@@ -408,18 +405,24 @@ HAL_StatusTypeDef Start_Dual_ADC_DMA(
     return HAL_ERROR;
   }
 
-  if (HAL_ADC_Start(&hadc2) != HAL_OK ||
-      HAL_ADCEx_MultiModeStart_DMA(&hadc1, DMA_ADC_buffer, number_of_samples*2) != HAL_OK) {
-    printf("Error: Failed to start ADC\r\n");
+  if (HAL_ADC_Start(&hadc2) != HAL_OK) {
+    printf("Error: Failed to start ADC2\r\n");
+    return HAL_ERROR;
+  }
+
+  if (HAL_ADCEx_MultiModeStart_DMA(&hadc1, DMA_ADC_buffer, number_of_samples*2) != HAL_OK) {
+    printf("Error: Failed to start ADC1\r\n");
     return HAL_ERROR;
   }
 
   // Clean state flags
   adc_done = 0;
   sample_count = 0;
-  htim4.Instance->CNT = 0UL;
 
-  if (HAL_TIM_Base_Start_IT(&htim4) != HAL_OK || HAL_TIM_Base_Start_IT(&htim3) != HAL_OK) {
+  __HAL_TIM_SET_COUNTER(&htim4, 0);
+  __HAL_TIM_SET_COUNTER(&htim3, 0);
+
+  if (HAL_TIM_Base_Start(&htim4) != HAL_OK || HAL_TIM_Base_Start_IT(&htim3) != HAL_OK) {
     printf("Error: Failed to start timers\r\n");
     return HAL_ERROR;
   }
@@ -431,8 +434,8 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
   if (hadc->Instance == ADC1)
   {
     HAL_TIM_Base_Stop(&htim4);
-    HAL_ADCEx_MultiModeStop_DMA(hadc);
     HAL_TIM_Base_Stop_IT(&htim3);
+    HAL_ADCEx_MultiModeStop_DMA(&hadc1);
     HAL_ADC_Stop(&hadc2);
     adc_done = 1;
   }
@@ -440,15 +443,9 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
     if (htim->Instance == TIM3) {
-    	HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
-        DMA_ADC_timming_buffer[sample_count] = htim4.Instance->CNT;
-        sample_count++;
+      DMA_ADC_timming_buffer[sample_count] = htim4.Instance->CNT;
+      sample_count++;
     }
-    if (htim->Instance == TIM4) {
-    	printf("Error: TIM4 overflow");
-    	htim->Instance->CNT = 0;
-    }
-
 }
 
 void HAL_ADC_ErrorCallback(ADC_HandleTypeDef *hadc) {
@@ -539,11 +536,26 @@ int main(void)
         printf("ADC2[%03d] \t%04X\r\n", i, val_adc2);
       }
 
-      HAL_Delay(1000);
-      Start_Dual_ADC_DMA(ONE_KHZ,
-        TEN,
-        MAX_SAMPLES,
-        DMA_ADC_buffer); // restart acquisition
+
+    }
+    if (command_ready) {
+      if (strcmp(rx_buffer, "1") == 0) {
+        HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
+      }
+      else if (strcmp(rx_buffer, "2") == 0) {
+        Start_Dual_ADC_DMA(ONE_KHZ,
+          TEN,
+          MAX_SAMPLES,
+          DMA_ADC_buffer);
+      }
+      char menu[] =
+        "\r\n=== Main Menu ===\r\n"
+        "1. Blink LED\r\n"
+        "2. Read ADC\r\n"
+        "3. Reset MCU\r\n"
+        "Enter choice: ";
+      CDC_Transmit_FS((uint8_t*)menu, strlen(menu));
+      command_ready = 0;
     }
     /* USER CODE END WHILE */
 
