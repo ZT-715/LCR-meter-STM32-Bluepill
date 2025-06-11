@@ -26,6 +26,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <math.h>
 #include <usbd_cdc_if.h>
 
 #include "string.h"
@@ -60,11 +61,11 @@ extern TIM_HandleTypeDef htim3;
 extern TIM_HandleTypeDef htim4;
 
 enum time_base {TENTH_OF_MICROSECOND, MICROSECOND, TENTH_MILLISECOND};
-enum signal_frequency {ONE_MHZ, ONE_HUNDRED_KHZ, TEN_KHZ, ONE_KHZ, ONE_HUNDRED_HZ, SIXTY_HZ};
-enum signal_samples {TWENTY, TEN, FIVE, TWO};
+enum signal_frequency {ONE_MHZ=1000000, ONE_HUNDRED_KHZ=100000, TEN_KHZ=10000, ONE_KHZ=1000, ONE_HUNDRED_HZ=100, SIXTY_HZ=60};
+enum signal_period_samples {TWENTY_SAMPLES=20, TEN_SAMPLES=10, FIVE_SAMPLES=5, TWO_SAMPLES=2};
 
-volatile uint32_t DMA_ADC_buffer[MAX_SAMPLES] = {[0 ... MAX_SAMPLES-1] = 0x00000000};
-volatile uint32_t DMA_ADC_timming_buffer[MAX_SAMPLES] = {[0 ... MAX_SAMPLES-1] = 0x00000000};
+uint32_t DMA_ADC_buffer[MAX_SAMPLES] = {[0 ... MAX_SAMPLES-1] = 0x00000000};
+uint32_t DMA_ADC_timming_buffer[MAX_SAMPLES] = {[0 ... MAX_SAMPLES-1] = 0x00000000};
 
 volatile uint32_t sample_count = 0;
 volatile uint8_t adc_done = 0;
@@ -79,7 +80,7 @@ int _write(int file, char *ptr, int len);
 
 HAL_StatusTypeDef ADC_base_TIM3_config(TIM_HandleTypeDef *htim3,
                                        enum signal_frequency src_frequency,
-                                       enum signal_samples samples_per_period);
+                                       enum signal_period_samples samples_per_period);
 
 HAL_StatusTypeDef time_base_config(TIM_HandleTypeDef *htim4, enum time_base time_base);
 
@@ -93,6 +94,16 @@ HAL_StatusTypeDef Start_Dual_ADC_DMA(enum signal_frequency src_frequency,
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc);
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim);
 void HAL_ADC_ErrorCallback(ADC_HandleTypeDef *hadc);
+
+HAL_StatusTypeDef band_pass_filter(uint8_t order,
+                                   double signal[MAX_SAMPLES],
+                                   enum signal_frequency src_frequency,
+                                   enum signal_period_samples samples_per_period);
+
+double get_linear_root(double y_0, double y_f, double time_delta);
+
+double get_phase_shift(double signal1[MAX_SAMPLES], double signal2[MAX_SAMPLES],
+ enum signal_frequency frequency, enum signal_period_samples samples_per_period);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -136,7 +147,7 @@ int _write(int file, char *ptr, int len) {
  */
 HAL_StatusTypeDef ADC_base_TIM3_config(TIM_HandleTypeDef *htim3,
                                        enum signal_frequency src_frequency,
-                                       enum signal_samples samples_per_period)
+                                       enum signal_period_samples samples_per_period)
 {
   TIM_ClockConfigTypeDef sClockSourceConfig = {0};
   TIM_MasterConfigTypeDef sMasterConfig = {0};
@@ -157,17 +168,18 @@ HAL_StatusTypeDef ADC_base_TIM3_config(TIM_HandleTypeDef *htim3,
   }
 
   switch (samples_per_period) {
-    case TWENTY:
+    case TWENTY_SAMPLES:
       timer_frequency = timer_frequency * 20;
     break;
-    case TEN:
+    case TEN_SAMPLES:
       timer_frequency = timer_frequency * 10;
     break;
-    case FIVE:
+    case FIVE_SAMPLES:
       timer_frequency = timer_frequency * 5;
     break;
-    case TWO:
+    case TWO_SAMPLES:
       timer_frequency = timer_frequency * 2;
+      break;
     default:
       return HAL_ERROR;
   }
@@ -474,6 +486,156 @@ void HAL_ADC_ErrorCallback(ADC_HandleTypeDef *hadc) {
   }
 }
 
+/**
+ * Applies to signal a band-pass filter spanning two octaves, from half src_frequency to twice the src_frequency.
+ *
+ * @param order Filter order, i.e. number of times each 1st order filter is applied
+ * @param signal Signal to be filtered
+ * @param src_frequency Frequency of the signal
+ * @param samples_per_period Number of samples of the signal per period
+ * @return HAL_OK on success, HAL_ERROR on failure
+ */
+HAL_StatusTypeDef band_pass_filter(const uint8_t order,
+                                   double signal[MAX_SAMPLES],
+                                   enum signal_frequency src_frequency,
+                                   enum signal_period_samples samples_per_period) {
+  double signal_frequency = src_frequency;
+  double sample_frequency = samples_per_period;
+
+  double low_cutoff_frequency = signal_frequency/2;
+  double high_cutoff_frequency = signal_frequency*2;
+  double alpha = exp(- 2*M_PI*low_cutoff_frequency/sample_frequency);
+  double beta = 1/(1+(2*M_PI*high_cutoff_frequency/sample_frequency));
+
+  // Low pass filter
+  for (int j = 0; j < order; j++) {
+    for (size_t i = 1; i < MAX_SAMPLES; i++) {
+      signal[i] = (1 - alpha)*signal[i] + alpha*signal[i-1];
+    }
+  }
+
+  // high pass filter
+  double high_pass_buffer[MAX_SAMPLES];
+  high_pass_buffer[0] = 0;
+  for (int j = 0; j < order; j++) {
+    for (size_t i = 1; i < MAX_SAMPLES; i++) {
+      high_pass_buffer[i] = beta*(high_pass_buffer[i-1]+signal[i]-signal[i-1]);
+    }
+    for (size_t i = 0; i < MAX_SAMPLES; i++) {
+      signal[i] = high_pass_buffer[i];
+    }
+  }
+  return HAL_OK;
+}
+
+/**
+ * Calculate time for linear signal to cross 0
+ * @param y_0 signal at t = 0
+ * @param y_f signal at t = time_delta
+ * @param time_delta time between y_0 and y_f
+ * @return time difference between y = y_0 and y = 0
+ */
+inline double get_linear_root(const double y_0, const double y_f, const double time_delta) {
+  const double b1 = (y_f - y_0)/time_delta;
+  const double a1 = y_0;
+  const double t1 = -(a1/b1);
+  return t1;
+}
+
+/**
+ * Calcula a diferença de fase entre dois sinais amostrados.
+ * @param signal1 Amplitude do sinal de referência em função da contagem de amostras
+ * @param signal2 Amplitude do sinal com variação de fase em função da contagem de amostras, sincronizado com signal1
+ * @param frequency Frequência dos sinais
+ * @param samples_per_period Quantidade de amostras por período do sinal
+ * @return Fase média entre signal1 e signal2, entre -179 e 179 graus
+ */
+double get_phase_shift(double signal1[MAX_SAMPLES], double signal2[MAX_SAMPLES],
+                       const enum signal_frequency frequency, const enum signal_period_samples samples_per_period) {
+
+  if (MAX_SAMPLES < 4*samples_per_period) {
+    printf("Error: Less than 4 periods of sampling. Unable to filter properly.\r\n");
+    return HAL_ERROR;
+  }
+
+  const double time_step = 1./(frequency*samples_per_period);
+  int8_t zero_crossings_1[MAX_SAMPLES];
+  int8_t zero_crossings_2[MAX_SAMPLES];
+  // double phase_shift[MAX_SAMPLES];
+
+  for (long i = 1; i < MAX_SAMPLES; i++) {
+    int8_t change_of_polarity1 = signal1[i-1]*signal1[i] < 0. ? 1 : 0;
+    int8_t change_of_polarity2 = signal2[i-1]*signal2[i] < 0. ? 1 : 0;
+
+    zero_crossings_1[i] = (int8_t)round(change_of_polarity1*signal1[i]/fabs(signal1[i]));
+    zero_crossings_2[i] = (int8_t)round(change_of_polarity2*signal2[i]/fabs(signal2[i]));
+  }
+
+  printf("Diferenças de fase no cruzamento de 0:\r\n");
+
+  double time_last_rising_edge_s1 = 0;
+  double time_last_falling_edge_s1 = 0;
+
+  double time_last_rising_edge_s2 = 0;
+  double time_last_falling_edge_s2 = 0;
+
+  double avg_phase_shift = 0.;
+  long avg_cnt = 0;
+
+  // Calcula relação atraso e utiliza angulo inverso caso a diferença seja maior
+  // que 180 graus, assim definindo qual está atrasado em relação ao outro.
+  for (long i = samples_per_period; i < MAX_SAMPLES - samples_per_period; i++) {
+    double time_rising_edge_s1 = 0.;
+    double time_falling_edge_s1 = 0.;
+
+    double time_rising_edge_s2 = 0.;
+    double time_falling_edge_s2 = 0.;
+
+    if (zero_crossings_1[i] == 1) {
+      time_last_rising_edge_s1 = time_rising_edge_s1;
+      const double t1 = get_linear_root(signal1[i-1], signal1[i], time_step);
+      time_rising_edge_s1 = (i-1)*time_step + t1;
+    }
+    else if (zero_crossings_1[i] == -1) {
+      time_last_falling_edge_s1 = time_falling_edge_s1;
+      const double t1 = get_linear_root(signal1[i-1], signal1[i], time_step);
+      time_falling_edge_s1 = (i-1)*time_step + t1;
+    }
+
+    if (zero_crossings_2[i] == 1) {
+      time_last_rising_edge_s2 = time_rising_edge_s2;
+      const double t2 = get_linear_root(signal2[i-1], signal2[i], time_step);
+      time_rising_edge_s2 = (i-1)*time_step + t2;
+    }
+    else if (zero_crossings_2[i] == -1) {
+      time_last_falling_edge_s2 = time_falling_edge_s2;
+      const double t2 = get_linear_root(signal2[i-1], signal2[i], time_step);
+      time_falling_edge_s2 = (i-1)*time_step + t2;
+    }
+
+    // @TODO testar diferença entre tempo calculado e definido do período
+    if (time_last_rising_edge_s1 != 0 && time_last_rising_edge_s2 != 0 && zero_crossings_1[i] == 1) {
+      double phase_diff = 360*(time_rising_edge_s1 - time_rising_edge_s2)/(time_rising_edge_s1 - time_last_rising_edge_s1);
+      if (phase_diff > 180) phase_diff = - 360 + phase_diff;
+      printf("R: %3.2f\r\n", phase_diff);
+      // phase_shift[i] = phase_diff;
+
+      avg_cnt++;
+      avg_phase_shift = avg_phase_shift == 0. ? phase_diff : avg_phase_shift*((avg_cnt-1.)/avg_cnt) + phase_diff/avg_cnt;
+    }
+    else if (time_last_falling_edge_s1 != 0 && time_last_falling_edge_s2 != 0 && zero_crossings_1[i] == -1) {
+      double phase_diff = 360*(time_falling_edge_s1 - time_falling_edge_s2)/(time_falling_edge_s1 - time_last_falling_edge_s1);
+      printf("F: %3.2f\r\n", phase_diff);
+      // phase_shift[i] = phase_diff;
+
+      avg_cnt++;
+      avg_phase_shift = avg_phase_shift == 0. ? phase_diff : avg_phase_shift*((avg_cnt-1.)/avg_cnt) + phase_diff/avg_cnt;
+    }
+  }
+  // Add breakpoint here to check values
+  printf ("\r\nNumero de médias: %i\r\n", avg_cnt);
+  return avg_phase_shift;
+}
 /* USER CODE END 0 */
 
 /**
@@ -514,7 +676,7 @@ int main(void)
   printf("\r"); // start serial
   printf("Start Program:\r\n");
 
-  Start_Dual_ADC_DMA(ONE_KHZ, TEN, MAX_SAMPLES, DMA_ADC_buffer);
+  Start_Dual_ADC_DMA(ONE_KHZ, TWENTY_SAMPLES, MAX_SAMPLES, DMA_ADC_buffer);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -523,20 +685,37 @@ int main(void)
   {
     if (adc_done)
     {
+      double adc1[MAX_SAMPLES];
+      double adc2[MAX_SAMPLES];
+
       HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, 1);
 
-      printf("Sample total: %u\r\n", sample_count + 1);
+      printf("Samples aquired: %lu\r\n", sample_count + 1);
+      printf("%-6s %-5s %-5s\r\n", "Time", "ADC1", "ADC2");
 
       for (int i = 0; i < MAX_SAMPLES; i++) {
-        uint16_t val_adc1 = DMA_ADC_buffer[i] & 0xFFFF;
-        uint16_t val_adc2 = (DMA_ADC_buffer[i] >> 16) & 0xFFFF;
+        const uint16_t val_adc1 = DMA_ADC_buffer[i] & 0xFFFF;
+        const uint16_t val_adc2 = (DMA_ADC_buffer[i] >> 16) & 0xFFFF;
 
-        printf("\r\n[%04lu us] reading:\r\n", DMA_ADC_timming_buffer[i]);
-        printf("ADC1[%03d] \t%04X\r\n", i, val_adc1);
-        printf("ADC2[%03d] \t%04X\r\n", i, val_adc2);
+        adc1[i] = val_adc1*(3.3/0xFFFF);
+        adc2[i] = val_adc2*(3.3/0xFFFF);
+
+        printf("%06lu %01.3f %01.3f ", DMA_ADC_timming_buffer[i], adc1[i], adc2[i]);
       }
 
+      printf("\r\nFiltered readings:\r\n");
+      printf("%-6s %-5s %-5s\r\n", "Time", "ADC1", "ADC2");
 
+      band_pass_filter(3, adc1, TEN_KHZ, TWENTY_SAMPLES);
+      band_pass_filter(3, adc2, TEN_KHZ, TWENTY_SAMPLES);
+
+      for (int i = 0; i < MAX_SAMPLES; i++) {
+        printf("%06lu %01.3f %01.3f ", DMA_ADC_timming_buffer[i], adc1[i], adc2[i]);
+      }
+
+      printf("\r\Phase readings:\r\n");
+      double phase = get_phase_shift(adc1, adc2, TEN_KHZ, TWENTY_SAMPLES);
+      printf("\r\nFinal phase: %f\r\n", phase);
     }
     if (command_ready) {
       if (strcmp(rx_buffer, "1") == 0) {
@@ -544,7 +723,7 @@ int main(void)
       }
       else if (strcmp(rx_buffer, "2") == 0) {
         Start_Dual_ADC_DMA(ONE_KHZ,
-          TEN,
+          TWENTY_SAMPLES,
           MAX_SAMPLES,
           DMA_ADC_buffer);
       }
