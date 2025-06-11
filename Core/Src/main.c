@@ -401,6 +401,8 @@ HAL_StatusTypeDef Start_Dual_ADC_DMA(
     return HAL_ERROR;
   }
 
+  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, 0);
+
   if (ADC_base_TIM3_config(&htim3, src_frequency, samples_per_period) != HAL_OK ||
       time_base_config(&htim4, MICROSECOND) != HAL_OK) {
     printf("Error: Failed to configure timers\r\n");
@@ -633,7 +635,7 @@ double get_phase_shift(double signal1[MAX_SAMPLES], double signal2[MAX_SAMPLES],
     }
   }
   // Add breakpoint here to check values
-  printf ("\r\nNumero de médias: %i\r\n", avg_cnt);
+  printf ("\r\nNumero de médias: %li\r\n", avg_cnt);
   return avg_phase_shift;
 }
 /* USER CODE END 0 */
@@ -689,9 +691,10 @@ int main(void)
       double adc2[MAX_SAMPLES];
 
       HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, 1);
+      adc_done = 0;
 
-      printf("Samples aquired: %lu\r\n", sample_count + 1);
-      printf("%-6s %-5s %-5s\r\n", "Time", "ADC1", "ADC2");
+      printf("Samples acquired: %lu\r\n", sample_count + 1);
+      printf("%-6s %-5s %-5s \r\n", "Time", "ADC1", "ADC2");
 
       for (int i = 0; i < MAX_SAMPLES; i++) {
         const uint16_t val_adc1 = DMA_ADC_buffer[i] & 0xFFFF;
@@ -700,7 +703,7 @@ int main(void)
         adc1[i] = val_adc1*(3.3/0xFFFF);
         adc2[i] = val_adc2*(3.3/0xFFFF);
 
-        printf("%06lu %01.3f %01.3f ", DMA_ADC_timming_buffer[i], adc1[i], adc2[i]);
+        printf("%06lu %01.3f %01.3f \r\n", DMA_ADC_timming_buffer[i], adc1[i], adc2[i]);
       }
 
       printf("\r\nFiltered readings:\r\n");
@@ -710,10 +713,10 @@ int main(void)
       band_pass_filter(3, adc2, TEN_KHZ, TWENTY_SAMPLES);
 
       for (int i = 0; i < MAX_SAMPLES; i++) {
-        printf("%06lu %01.3f %01.3f ", DMA_ADC_timming_buffer[i], adc1[i], adc2[i]);
+        printf("%06lu %01.3f %01.3f \r\n", DMA_ADC_timming_buffer[i], adc1[i], adc2[i]);
       }
 
-      printf("\r\Phase readings:\r\n");
+      printf("\r\nPhase readings:\r\n");
       double phase = get_phase_shift(adc1, adc2, TEN_KHZ, TWENTY_SAMPLES);
       printf("\r\nFinal phase: %f\r\n", phase);
     }
