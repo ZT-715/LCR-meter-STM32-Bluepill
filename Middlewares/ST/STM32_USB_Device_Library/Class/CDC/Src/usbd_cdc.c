@@ -209,7 +209,7 @@ __ALIGN_BEGIN uint8_t USBD_CDC_CfgHSDesc[USB_CDC_CONFIG_DESC_SIZ] __ALIGN_END =
   0x05,   /* bFunctionLength */
   0x24,   /* bDescriptorType: CS_INTERFACE */
   0x01,   /* bDescriptorSubtype: Call Management Func Desc */
-  0x00,   /* bmCapabilities: D0+D1 */
+  0x02,   /* bmCapabilities: D0+D1 */
   0x01,   /* bDataInterface: 1 */
 
   /*ACM Functional Descriptor*/
@@ -305,7 +305,7 @@ __ALIGN_BEGIN uint8_t USBD_CDC_CfgFSDesc[USB_CDC_CONFIG_DESC_SIZ] __ALIGN_END =
   0x05,   /* bFunctionLength */
   0x24,   /* bDescriptorType: CS_INTERFACE */
   0x01,   /* bDescriptorSubtype: Call Management Func Desc */
-  0x00,   /* bmCapabilities: D0+D1 */
+  0x02,   /* bmCapabilities: D0+D1 */
   0x01,   /* bDataInterface: 1 */
 
   /*ACM Functional Descriptor*/
@@ -396,7 +396,7 @@ __ALIGN_BEGIN uint8_t USBD_CDC_OtherSpeedCfgDesc[USB_CDC_CONFIG_DESC_SIZ] __ALIG
   0x05,   /* bFunctionLength */
   0x24,   /* bDescriptorType: CS_INTERFACE */
   0x01,   /* bDescriptorSubtype: Call Management Func Desc */
-  0x00,   /* bmCapabilities: D0+D1 */
+  0x02,   /* bmCapabilities: D0+D1 */
   0x01,   /* bDataInterface: 1 */
 
   /*ACM Functional Descriptor*/
