@@ -40,7 +40,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define MAX_SAMPLES 250
+#define MAX_SAMPLES 200
 
 #define CPU_FREQUENCY 72000000
 /* USER CODE END PD */
@@ -65,8 +65,11 @@ enum time_base {TENTH_OF_MICROSECOND, MICROSECOND, TENTH_MILLISECOND};
 enum signal_frequency {ONE_MHZ=1000000, ONE_HUNDRED_KHZ=100000, TEN_KHZ=10000, ONE_KHZ=1000, ONE_HUNDRED_HZ=100, SIXTY_HZ=60};
 enum signal_period_samples {TWENTY_SAMPLES=20, TEN_SAMPLES=10, FIVE_SAMPLES=5, TWO_SAMPLES=2};
 
+uint32_t samples_per_period_conf = TWENTY_SAMPLES;
+uint32_t source_frequency_conf = ONE_KHZ;
+
 uint32_t DMA_ADC_buffer[MAX_SAMPLES] = {[0 ... MAX_SAMPLES-1] = 0x00000000};
-uint32_t DMA_ADC_timming_buffer[MAX_SAMPLES] = {[0 ... MAX_SAMPLES-1] = 0x00000000};
+float ADC_timming_buffer_us[MAX_SAMPLES] = {[0 ... MAX_SAMPLES-1] = 0.};
 
 volatile uint32_t sample_count = 0;
 volatile uint8_t adc_done = 0;
@@ -155,37 +158,7 @@ HAL_StatusTypeDef ADC_base_TIM3_config(TIM_HandleTypeDef *htim3,
   TIM_ClockConfigTypeDef sClockSourceConfig = {0};
   TIM_MasterConfigTypeDef sMasterConfig = {0};
 
-  uint32_t timer_frequency = 0;
-  switch (src_frequency) {
-    case ONE_KHZ:
-      timer_frequency = 1000;
-    break;
-    case ONE_HUNDRED_HZ:
-      timer_frequency = 100;
-    break;
-    case SIXTY_HZ:
-      timer_frequency = 60;
-    break;
-    default:
-      return HAL_ERROR;
-  }
-
-  switch (samples_per_period) {
-    case TWENTY_SAMPLES:
-      timer_frequency = timer_frequency * 20;
-    break;
-    case TEN_SAMPLES:
-      timer_frequency = timer_frequency * 10;
-    break;
-    case FIVE_SAMPLES:
-      timer_frequency = timer_frequency * 5;
-    break;
-    case TWO_SAMPLES:
-      timer_frequency = timer_frequency * 2;
-      break;
-    default:
-      return HAL_ERROR;
-  }
+  uint32_t timer_frequency = src_frequency*samples_per_period;
 
   uint32_t prescaler = 0;
   uint32_t period = 0;
@@ -427,7 +400,7 @@ HAL_StatusTypeDef Start_Dual_ADC_DMA(
     return HAL_ERROR;
   }
 
-  if (HAL_ADCEx_MultiModeStart_DMA(&hadc1, DMA_ADC_buffer, number_of_samples) != HAL_OK) {
+  if (HAL_ADCEx_MultiModeStart_DMA(&hadc1, DMA_ADC_buffer, number_of_samples*2) != HAL_OK) {
     printf("Error: Failed to start ADC1\r\n");
     return HAL_ERROR;
   }
@@ -460,7 +433,6 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
     if (htim->Instance == TIM3) {
-      DMA_ADC_timming_buffer[sample_count] = htim4.Instance->CNT;
       sample_count++;
     }
 }
@@ -681,13 +653,14 @@ int main(void)
   printf("\r"); // start serial
   printf("Start Program:\r\n");
   command_ready = 0xFF;
+  samples_per_period_conf = TWENTY_SAMPLES;
+  source_frequency_conf = ONE_KHZ;
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-//	CDC_Transmit_FS((uint8_t*)"Transmit test", 17U);
     if (adc_done)
     {
       double adc1[MAX_SAMPLES];
@@ -696,8 +669,11 @@ int main(void)
       HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, 1);
       adc_done = 0;
 
-      printf("Acquired %lu samples. \r\n", sample_count);
+      printf("Acquired %.0f samples. \r\n", (float)sample_count);
       printf("%-6s %-5s %-5s \r\n", "Time", "ADC1", "ADC2");
+
+      for (int i = 0; i < MAX_SAMPLES; i++)
+        ADC_timming_buffer_us[i] = i*1e6/(samples_per_period_conf*source_frequency_conf*1.);
 
       for (int i = 0; i < MAX_SAMPLES; i++) {
         const uint16_t val_adc1 = DMA_ADC_buffer[i] & 0xFFFF;
@@ -706,7 +682,7 @@ int main(void)
         adc1[i] = val_adc1*(3.3/0xFFFF);
         adc2[i] = val_adc2*(3.3/0xFFFF);
 
-        printf("%06lu %01.3f %01.3f \r\n", DMA_ADC_timming_buffer[i], adc1[i], adc2[i]);
+        printf("%06.3f %01.3f %01.3f \r\n", ADC_timming_buffer_us[i], adc1[i], adc2[i]);
       }
 
       printf("\r\nFiltered readings:\r\n");
@@ -716,7 +692,7 @@ int main(void)
       band_pass_filter(3, adc2, TEN_KHZ, TWENTY_SAMPLES);
 
       for (int i = 0; i < MAX_SAMPLES; i++) {
-        printf("%06lu %01.3f %01.3f \r\n", DMA_ADC_timming_buffer[i], adc1[i], adc2[i]);
+        printf("%06.3f %01.3f %01.3f \r\n", ADC_timming_buffer_us[i], adc1[i], adc2[i]);
       }
 
       printf("\r\nPhase readings:\r\n");
@@ -725,33 +701,119 @@ int main(void)
 
       command_ready = 0xFF;
     }
-    // screen /dev/tty.usbmodem8D954F9F55501 115200
     if (command_ready == 0xFF) {
+      uint8_t show_menu = 0xFF;
       if (strcmp((char*)Rx, "1") == 0) {
-    	printf("Toggle LED\r\n");
+        printf("Toggle LED\r\n");
         HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
       }
       else if (strcmp((char*)Rx, "2") == 0) {
       	printf("READ ADC:\r\n");
 
-        Start_Dual_ADC_DMA(ONE_KHZ,
-          TWENTY_SAMPLES,
+        Start_Dual_ADC_DMA(source_frequency_conf,
+          samples_per_period_conf,
           MAX_SAMPLES,
           DMA_ADC_buffer);
       }
       else if (strcmp((char*)Rx, "3") == 0) {
+        printf("\r\n=== Settings ===\r\n"
+          "Signal frequency: %lu Hz\r\n"
+          "Samples per period: %lu\r\n",
+          source_frequency_conf,
+          samples_per_period_conf
+          );
+        char settigns[] =
+          "31. Define signal frequency\r\n"
+          "32. Set samples per period\r\n"
+          "33. Go back\r\n"
+          "Enter choice: ";
+        while (CDC_Transmit_FS((uint8_t*)settigns, strlen(settigns)) == USBD_BUSY) {}
+        show_menu = 0x00;
+      }
+      else if (strcmp((char*)Rx, "31") == 0) {
+        char signal_frequencies[] =
+          "\r\n=== Excitation signal frequency ===\r\n"
+          "311. 60 Hz\r\n"
+          "312. 100 Hz\r\n"
+          "313. 1 kHz\r\n"
+          "314. 10 kHz\r\n"
+          "315. 100 kHz\r\n"
+          "316. 1 MHz\r\n"
+          "33. Go back\r\n"
+          "Enter choice: ";
+        while (CDC_Transmit_FS((uint8_t*)signal_frequencies, strlen(signal_frequencies)) == USBD_BUSY) {}
+        show_menu = 0x00;
+// enum time_base {TENTH_OF_MICROSECOND, MICROSECOND, TENTH_MILLISECOND};
+// enum signal_frequency {ONE_MHZ=1000000, ONE_HUNDRED_KHZ=100000, TEN_KHZ=10000, ONE_KHZ=1000, ONE_HUNDRED_HZ=100, SIXTY_HZ=60};
+// enum signal_period_samples {TWENTY_SAMPLES=20, TEN_SAMPLES=10, FIVE_SAMPLES=5, TWO_SAMPLES=2};
+      }
+      else if (strcmp((char*)Rx, "311") == 0) {
+        source_frequency_conf = SIXTY_HZ;
+      }
+      else if (strcmp((char*)Rx, "312") == 0) {
+        source_frequency_conf = ONE_HUNDRED_HZ;
+      }
+      else if (strcmp((char*)Rx, "313") == 0) {
+        source_frequency_conf = ONE_KHZ;
+      }
+      else if (strcmp((char*)Rx, "314") == 0) {
+        source_frequency_conf = TEN_KHZ;
+      }
+      else if (strcmp((char*)Rx, "315") == 0) {
+        source_frequency_conf = ONE_HUNDRED_KHZ;
+      }
+      else if (strcmp((char*)Rx, "316") == 0) {
+        source_frequency_conf = ONE_MHZ;
+      }
+      else if (strcmp((char*)Rx, "32") == 0) {
+        char samplings[] =
+          "\r\n=== Samples per period ===\r\n"
+          "321. Two\r\n"
+          "322. Five\r\n"
+          "323. Ten\r\n"
+          "324. Twenty\r\n"
+          "33. Go back\r\n"
+          "Enter choice: ";
+        while (CDC_Transmit_FS((uint8_t*)samplings, strlen(samplings)) == USBD_BUSY) {}
+        show_menu = 0x00;
+      }
+      else if (strcmp((char*)Rx, "321") == 0) {
+        samples_per_period_conf = TWO_SAMPLES;
+      }
+      else if (strcmp((char*)Rx, "322") == 0) {
+        samples_per_period_conf = FIVE_SAMPLES;
+      }
+      else if (strcmp((char*)Rx, "323") == 0) {
+        samples_per_period_conf = TEN_SAMPLES;
+      }
+      else if (strcmp((char*)Rx, "324") == 0) {
+        samples_per_period_conf = TWENTY_SAMPLES;
+      }
+      else if (strcmp((char*)Rx, "33") == 0) {
+        __NOP();
+      }
+      else if (strcmp((char*)Rx, "4") == 0) {
         printf("Reset...\r\n");
         HAL_Delay(100);  // Optional: allow USB to flush message
+        command_ready = 0xFF;
+        cmd_index = 0;
+        memset(Rx, 0x00, sizeof(Rx));
         NVIC_SystemReset();  // Reset the MCU
       }
 
-      char menu[] =
+      if (show_menu == 0xFF) {
+        char menu[] =
         "\r\n=== Main Menu ===\r\n"
         "1. Blink LED\r\n"
         "2. Read ADC\r\n"
-        "3. Reset MCU\r\n"
+        "3. Settings\r\n"
+        "4. Reset MCU\r\n"
         "Enter choice: ";
-      while (CDC_Transmit_FS((uint8_t*)menu, strlen(menu)) == USBD_BUSY) {}
+        while (CDC_Transmit_FS((uint8_t*)menu, strlen(menu)) == USBD_BUSY) {
+          __NOP();
+        }
+      }
+
       cmd_index = 0;
       command_ready = 0x00;
       memset(Rx, 0, sizeof(Rx));
