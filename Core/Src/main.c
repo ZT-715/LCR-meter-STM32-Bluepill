@@ -54,8 +54,9 @@
 
 /* USER CODE BEGIN PV */
 extern USBD_HandleTypeDef hUsbDeviceFS;
-extern volatile char rx_buffer[RX_BUF_LEN];
+extern uint8_t Rx[APP_RX_DATA_SIZE];
 extern volatile uint8_t command_ready;
+extern volatile uint8_t cmd_index;
 
 extern TIM_HandleTypeDef htim3;
 extern TIM_HandleTypeDef htim4;
@@ -69,6 +70,7 @@ uint32_t DMA_ADC_timming_buffer[MAX_SAMPLES] = {[0 ... MAX_SAMPLES-1] = 0x000000
 
 volatile uint32_t sample_count = 0;
 volatile uint8_t adc_done = 0;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -117,8 +119,8 @@ double get_phase_shift(double signal1[MAX_SAMPLES], double signal2[MAX_SAMPLES],
 //   ITM->PORT[0U].u8 = (uint8_t)ch;
 //   return ch;
 // }
-
-// Function may conflict with syscalls.c, erase them in this case.
+//
+//// Function may conflict with syscalls.c, erase them in this case.
 // int _write(int file, char *ptr, int len) {
 //   for (int i = 0; i < len; i++) {
 //     __io_putchar(*ptr);
@@ -128,12 +130,13 @@ double get_phase_shift(double signal1[MAX_SAMPLES], double signal2[MAX_SAMPLES],
 // }
 
 //@TODO checar retorno das funções
-int _write(int file, char *ptr, int len) {
-  if (hUsbDeviceFS.dev_state == USBD_STATE_CONFIGURED) {
-    CDC_Transmit_FS((uint8_t*)ptr, len);
-  }
-  return len;
+int _write(int file, char *data, int len) {
+    while (CDC_Transmit_FS((uint8_t*)data, len) == USBD_BUSY) {
+    	__NOP();
+    }
+    return len;
 }
+
 
 /**
  * Configures TIM3 to trigger samples_per_period*src_frequency times per second,
@@ -424,7 +427,7 @@ HAL_StatusTypeDef Start_Dual_ADC_DMA(
     return HAL_ERROR;
   }
 
-  if (HAL_ADCEx_MultiModeStart_DMA(&hadc1, DMA_ADC_buffer, number_of_samples*2) != HAL_OK) {
+  if (HAL_ADCEx_MultiModeStart_DMA(&hadc1, DMA_ADC_buffer, number_of_samples) != HAL_OK) {
     printf("Error: Failed to start ADC1\r\n");
     return HAL_ERROR;
   }
@@ -573,7 +576,7 @@ double get_phase_shift(double signal1[MAX_SAMPLES], double signal2[MAX_SAMPLES],
     zero_crossings_2[i] = (int8_t)round(change_of_polarity2*signal2[i]/fabs(signal2[i]));
   }
 
-  printf("Diferenças de fase no cruzamento de 0:\r\n");
+  printf("Diferencas de fase no cruzamento de 0:\r\n");
 
   double time_last_rising_edge_s1 = 0;
   double time_last_falling_edge_s1 = 0;
@@ -635,7 +638,7 @@ double get_phase_shift(double signal1[MAX_SAMPLES], double signal2[MAX_SAMPLES],
     }
   }
   // Add breakpoint here to check values
-  printf ("\r\nNumero de médias: %li\r\n", avg_cnt);
+  printf ("\r\nAverages made: %li\r\n", avg_cnt);
   return avg_phase_shift;
 }
 /* USER CODE END 0 */
@@ -677,14 +680,14 @@ int main(void)
   HAL_Delay(1000);
   printf("\r"); // start serial
   printf("Start Program:\r\n");
-
-  Start_Dual_ADC_DMA(ONE_KHZ, TWENTY_SAMPLES, MAX_SAMPLES, DMA_ADC_buffer);
+  command_ready = 0xFF;
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+//	CDC_Transmit_FS((uint8_t*)"Transmit test", 17U);
     if (adc_done)
     {
       double adc1[MAX_SAMPLES];
@@ -693,7 +696,7 @@ int main(void)
       HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, 1);
       adc_done = 0;
 
-      printf("Samples acquired: %lu\r\n", sample_count + 1);
+      printf("Acquired %lu samples. \r\n", sample_count);
       printf("%-6s %-5s %-5s \r\n", "Time", "ADC1", "ADC2");
 
       for (int i = 0; i < MAX_SAMPLES; i++) {
@@ -719,25 +722,39 @@ int main(void)
       printf("\r\nPhase readings:\r\n");
       double phase = get_phase_shift(adc1, adc2, TEN_KHZ, TWENTY_SAMPLES);
       printf("\r\nFinal phase: %f\r\n", phase);
+
+      command_ready = 0xFF;
     }
-    if (command_ready) {
-      if (strcmp(rx_buffer, "1") == 0) {
+    // screen /dev/tty.usbmodem8D954F9F55501 115200
+    if (command_ready == 0xFF) {
+      if (strcmp((char*)Rx, "1") == 0) {
+    	printf("Toggle LED\r\n");
         HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
       }
-      else if (strcmp(rx_buffer, "2") == 0) {
+      else if (strcmp((char*)Rx, "2") == 0) {
+      	printf("READ ADC:\r\n");
+
         Start_Dual_ADC_DMA(ONE_KHZ,
           TWENTY_SAMPLES,
           MAX_SAMPLES,
           DMA_ADC_buffer);
       }
+      else if (strcmp((char*)Rx, "3") == 0) {
+        printf("Reset...\r\n");
+        HAL_Delay(100);  // Optional: allow USB to flush message
+        NVIC_SystemReset();  // Reset the MCU
+      }
+
       char menu[] =
         "\r\n=== Main Menu ===\r\n"
         "1. Blink LED\r\n"
         "2. Read ADC\r\n"
         "3. Reset MCU\r\n"
         "Enter choice: ";
-      CDC_Transmit_FS((uint8_t*)menu, strlen(menu));
-      command_ready = 0;
+      while (CDC_Transmit_FS((uint8_t*)menu, strlen(menu)) == USBD_BUSY) {}
+      cmd_index = 0;
+      command_ready = 0x00;
+      memset(Rx, 0, sizeof(Rx));
     }
     /* USER CODE END WHILE */
 

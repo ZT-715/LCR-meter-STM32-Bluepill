@@ -31,9 +31,9 @@
 
 /* USER CODE BEGIN PV */
 /* Private variables ---------------------------------------------------------*/
-volatile char rx_buffer[RX_BUF_LEN];
-uint8_t rx_index = 0;
+volatile uint8_t cmd_index = 0;
 volatile uint8_t command_ready = 0;
+uint8_t Rx[APP_RX_DATA_SIZE];
 /* USER CODE END PV */
 
 /** @addtogroup STM32_USB_OTG_DEVICE_LIBRARY
@@ -129,7 +129,9 @@ static int8_t CDC_Control_FS(uint8_t cmd, uint8_t* pbuf, uint16_t length);
 static int8_t CDC_Receive_FS(uint8_t* pbuf, uint32_t *Len);
 
 /* USER CODE BEGIN PRIVATE_FUNCTIONS_DECLARATION */
-
+void echo_received_data(uint8_t* data, uint32_t lenght) {
+    while (CDC_Transmit_FS((uint8_t*)data, (uint16_t)lenght) == USBD_BUSY);
+}
 /* USER CODE END PRIVATE_FUNCTIONS_DECLARATION */
 
 /**
@@ -261,18 +263,40 @@ static int8_t CDC_Control_FS(uint8_t cmd, uint8_t* pbuf, uint16_t length)
 static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
 {
   /* USER CODE BEGIN 6 */
-  for (uint32_t i = 0; i < *Len; ++i) {
-    if (Buf[i] == '\n' || Buf[i] == '\r') {
-      rx_buffer[rx_index] = '\0';
-      command_ready = 1;
-      rx_index = 0;
-    } else if (rx_index < RX_BUF_LEN - 1) {
-      rx_buffer[rx_index++] = Buf[i];
-    }
+	for (uint32_t i = 0; i < *Len; i++) {
+      if (command_ready == 0xFF) break;
+	    char c = Buf[i];
+
+      // Handle backspace
+      if (c == '\b' && cmd_index > 0) {
+          cmd_index--;
+          echo_received_data((uint8_t*)"\b \b", 3); // erase from screen
+          continue;
+      }
+
+      // // Skip lone '\n' or '\r' that follow command completion
+      // if ((c == '\r' || c == '\n') && cmd_index == 0) {
+      //     continue;
+      // }
+
+      // Handle Enter key (command complete)
+      if (i >= APP_RX_DATA_SIZE - 1 || c == '\n' || c == '\r') {
+          Rx[cmd_index] = '\0';
+          command_ready = 0xFF;
+          echo_received_data((uint8_t*)"\r\n", 2);
+          continue;
+      }
+
+      // Store and echo character
+      echo_received_data((uint8_t*)&c, 1);
+      Rx[cmd_index++] = c;
   }
+
   USBD_CDC_SetRxBuffer(&hUsbDeviceFS, &Buf[0]);
   USBD_CDC_ReceivePacket(&hUsbDeviceFS);
+
   return (USBD_OK);
+
   /* USER CODE END 6 */
 }
 
