@@ -92,7 +92,7 @@ HAL_StatusTypeDef time_base_config(TIM_HandleTypeDef *htim4, enum time_base time
 HAL_StatusTypeDef ADC_Dual_config(ADC_HandleTypeDef *adc1, ADC_HandleTypeDef *adc2);
 
 HAL_StatusTypeDef Start_Dual_ADC_DMA(enum signal_frequency src_frequency,
-  uint16_t samples_per_period,
+  enum signal_period_samples samples_per_period,
   uint32_t number_of_samples,
   uint32_t* DMA_ADC_buffer);
 
@@ -276,75 +276,6 @@ HAL_StatusTypeDef time_base_config(TIM_HandleTypeDef *htim4, enum time_base time
   return HAL_OK;
 }
 
-HAL_StatusTypeDef ADC_Dual_config(
-  ADC_HandleTypeDef *hadc1,
-  ADC_HandleTypeDef *hadc2)
-{
-  ADC_MultiModeTypeDef multimode = {0};
-  ADC_ChannelConfTypeDef sConfig = {0};
-
-  /** Common config
-  */
-  hadc1->Instance = ADC1;
-  hadc1->Init.ScanConvMode = ADC_SCAN_DISABLE;
-  hadc1->Init.ContinuousConvMode = DISABLE;
-  hadc1->Init.DiscontinuousConvMode = DISABLE;
-  hadc1->Init.ExternalTrigConv = ADC_EXTERNALTRIGCONV_T3_TRGO;
-  hadc1->Init.DataAlign = ADC_DATAALIGN_RIGHT;
-  hadc1->Init.NbrOfConversion = 1;
-  if (HAL_ADC_Init(hadc1) != HAL_OK)
-  {
-    return HAL_ERROR;
-  }
-
-  /** Configure the ADC multi-mode
-  */
-  multimode.Mode = ADC_DUALMODE_REGSIMULT;
-  if (HAL_ADCEx_MultiModeConfigChannel(hadc1, &multimode) != HAL_OK)
-  {
-    return HAL_ERROR;
-  }
-
-  /** Configure Regular Channel
-  */
-  sConfig.Channel = ADC_CHANNEL_1;
-  sConfig.Rank = ADC_REGULAR_RANK_1;
-  sConfig.SamplingTime = ADC_SAMPLETIME_1CYCLE_5;
-  if (HAL_ADC_ConfigChannel(hadc1, &sConfig) != HAL_OK)
-  {
-    return HAL_ERROR;
-  }
-
-  /* ADC2 init function */
-  /** Common config
-  */
-  hadc2->Instance = ADC2;
-  hadc2->Init.ScanConvMode = ADC_SCAN_DISABLE;
-  hadc2->Init.ContinuousConvMode = DISABLE;
-  hadc2->Init.DiscontinuousConvMode = DISABLE;
-  hadc2->Init.ExternalTrigConv = ADC_SOFTWARE_START;
-  hadc2->Init.DataAlign = ADC_DATAALIGN_RIGHT;
-  hadc2->Init.NbrOfConversion = 1;
-  if (HAL_ADC_Init(hadc2) != HAL_OK)
-  {
-    return HAL_ERROR;
-  }
-
-  /** Configure Regular Channel
-  */
-  sConfig.Channel = ADC_CHANNEL_2;
-  sConfig.Rank = ADC_REGULAR_RANK_1;
-  sConfig.SamplingTime = ADC_SAMPLETIME_1CYCLE_5;
-  if (HAL_ADC_ConfigChannel(hadc2, &sConfig) != HAL_OK)
-  {
-    return HAL_ERROR;
-  }
-
-  multimode.Mode = ADC_DUALMODE_REGSIMULT;
-  HAL_ADCEx_MultiModeConfigChannel(hadc1, &multimode);
-  return HAL_OK;
-}
-
 /**
  * Configures and starts ADC in dual mode with TIM3 trigger, DMA to automatically save all acquisitions
  * in the DMA_ADC_buffer[] and TIM4 as time base for each acquisition.
@@ -369,7 +300,7 @@ HAL_StatusTypeDef ADC_Dual_config(
  */
 HAL_StatusTypeDef Start_Dual_ADC_DMA(
   const enum signal_frequency src_frequency,
-  const uint16_t samples_per_period,
+  const enum signal_period_samples samples_per_period,
   const uint32_t number_of_samples,
   uint32_t* DMA_ADC_buffer) {
   if (number_of_samples > MAX_SAMPLES) {
@@ -377,16 +308,10 @@ HAL_StatusTypeDef Start_Dual_ADC_DMA(
     return HAL_ERROR;
   }
 
-  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, 0);
-
-  if (ADC_base_TIM3_config(&htim3, src_frequency, samples_per_period) != HAL_OK ||
-      time_base_config(&htim4, MICROSECOND) != HAL_OK) {
+  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
+// || time_base_config(&htim4, MICROSECOND)
+  if (ADC_base_TIM3_config(&htim3, src_frequency, samples_per_period) != HAL_OK) {
     printf("Error: Failed to configure timers\r\n");
-    return HAL_ERROR;
-      }
-
-  if (ADC_Dual_config(&hadc1, &hadc2) != HAL_OK) {
-    printf("Error: Failed to configure ADC dual mode\r\n");
     return HAL_ERROR;
   }
 
@@ -395,12 +320,12 @@ HAL_StatusTypeDef Start_Dual_ADC_DMA(
     return HAL_ERROR;
   }
 
-  if (HAL_ADC_Start(&hadc2) != HAL_OK) {
-    printf("Error: Failed to start ADC2\r\n");
-    return HAL_ERROR;
-  }
+   if (HAL_ADC_Start(&hadc2) != HAL_OK) {
+     printf("Error: Failed to start ADC2\r\n");
+     return HAL_ERROR;
+   }
 
-  if (HAL_ADCEx_MultiModeStart_DMA(&hadc1, DMA_ADC_buffer, number_of_samples*2) != HAL_OK) {
+  if (HAL_ADCEx_MultiModeStart_DMA(&hadc1, DMA_ADC_buffer, number_of_samples) != HAL_OK) {
     printf("Error: Failed to start ADC1\r\n");
     return HAL_ERROR;
   }
@@ -409,11 +334,11 @@ HAL_StatusTypeDef Start_Dual_ADC_DMA(
   adc_done = 0;
   sample_count = 0;
 
-  __HAL_TIM_SET_COUNTER(&htim4, 0);
+  // __HAL_TIM_SET_COUNTER(&htim4, 0);
   __HAL_TIM_SET_COUNTER(&htim3, 0);
-
-  if (HAL_TIM_Base_Start(&htim4) != HAL_OK || HAL_TIM_Base_Start_IT(&htim3) != HAL_OK) {
-    printf("Error: Failed to start timers\r\n");
+// HAL_TIM_Base_Start(&htim4) != HAL_OK ||
+  if (HAL_TIM_Base_Start_IT(&htim3) != HAL_OK) {
+    printf("Error: Failed to start timer3\r\n");
     return HAL_ERROR;
   }
   return HAL_OK;
@@ -423,7 +348,6 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 {
   if (hadc->Instance == ADC1)
   {
-    HAL_TIM_Base_Stop(&htim4);
     HAL_TIM_Base_Stop_IT(&htim3);
     HAL_ADCEx_MultiModeStop_DMA(&hadc1);
     HAL_ADC_Stop(&hadc2);
@@ -513,10 +437,7 @@ HAL_StatusTypeDef band_pass_filter(const uint8_t order,
  * @return time difference between y = y_0 and y = 0
  */
 inline double get_linear_root(const double y_0, const double y_f, const double time_delta) {
-  const double b1 = (y_f - y_0)/time_delta;
-  const double a1 = y_0;
-  const double t1 = -(a1/b1);
-  return t1;
+  return time_delta*(-y_0)/(y_f-y_0);
 }
 
 /**
@@ -532,7 +453,7 @@ double get_phase_shift(double signal1[MAX_SAMPLES], double signal2[MAX_SAMPLES],
 
   if (MAX_SAMPLES < 4*samples_per_period) {
     printf("Error: Less than 4 periods of sampling. Unable to filter properly.\r\n");
-    return HAL_ERROR;
+    return NAN;
   }
 
   const double time_step = 1./(frequency*samples_per_period);
@@ -548,7 +469,7 @@ double get_phase_shift(double signal1[MAX_SAMPLES], double signal2[MAX_SAMPLES],
     zero_crossings_2[i] = (int8_t)round(change_of_polarity2*signal2[i]/fabs(signal2[i]));
   }
 
-  printf("Diferencas de fase no cruzamento de 0:\r\n");
+  printf("Phase difference 0 crossing:\r\n");
 
   double time_last_rising_edge_s1 = 0;
   double time_last_falling_edge_s1 = 0;
@@ -569,23 +490,19 @@ double get_phase_shift(double signal1[MAX_SAMPLES], double signal2[MAX_SAMPLES],
     double time_falling_edge_s2 = 0.;
 
     if (zero_crossings_1[i] == 1) {
-      time_last_rising_edge_s1 = time_rising_edge_s1;
       const double t1 = get_linear_root(signal1[i-1], signal1[i], time_step);
       time_rising_edge_s1 = (i-1)*time_step + t1;
     }
     else if (zero_crossings_1[i] == -1) {
-      time_last_falling_edge_s1 = time_falling_edge_s1;
       const double t1 = get_linear_root(signal1[i-1], signal1[i], time_step);
       time_falling_edge_s1 = (i-1)*time_step + t1;
     }
 
     if (zero_crossings_2[i] == 1) {
-      time_last_rising_edge_s2 = time_rising_edge_s2;
       const double t2 = get_linear_root(signal2[i-1], signal2[i], time_step);
       time_rising_edge_s2 = (i-1)*time_step + t2;
     }
     else if (zero_crossings_2[i] == -1) {
-      time_last_falling_edge_s2 = time_falling_edge_s2;
       const double t2 = get_linear_root(signal2[i-1], signal2[i], time_step);
       time_falling_edge_s2 = (i-1)*time_step + t2;
     }
@@ -593,7 +510,10 @@ double get_phase_shift(double signal1[MAX_SAMPLES], double signal2[MAX_SAMPLES],
     // @TODO testar diferença entre tempo calculado e definido do período
     if (time_last_rising_edge_s1 != 0 && time_last_rising_edge_s2 != 0 && zero_crossings_1[i] == 1) {
       double phase_diff = 360*(time_rising_edge_s1 - time_rising_edge_s2)/(time_rising_edge_s1 - time_last_rising_edge_s1);
-      if (phase_diff > 180) phase_diff = - 360 + phase_diff;
+      if (phase_diff > 180.0)
+        phase_diff -= 360.0;
+      else if (phase_diff < -180.0)
+        phase_diff += 360.0;
       printf("R: %3.2f\r\n", phase_diff);
       // phase_shift[i] = phase_diff;
 
@@ -602,16 +522,30 @@ double get_phase_shift(double signal1[MAX_SAMPLES], double signal2[MAX_SAMPLES],
     }
     else if (time_last_falling_edge_s1 != 0 && time_last_falling_edge_s2 != 0 && zero_crossings_1[i] == -1) {
       double phase_diff = 360*(time_falling_edge_s1 - time_falling_edge_s2)/(time_falling_edge_s1 - time_last_falling_edge_s1);
+      if (phase_diff > 180.0)
+        phase_diff -= 360.0;
+      else if (phase_diff < -180.0)
+        phase_diff += 360.0;
       printf("F: %3.2f\r\n", phase_diff);
       // phase_shift[i] = phase_diff;
 
       avg_cnt++;
       avg_phase_shift = avg_phase_shift == 0. ? phase_diff : avg_phase_shift*((avg_cnt-1.)/avg_cnt) + phase_diff/avg_cnt;
     }
+
+    if (zero_crossings_1[i] == 1)
+      time_last_rising_edge_s1 = time_rising_edge_s1;
+    else if (zero_crossings_1[i] == -1)
+      time_last_falling_edge_s1 = time_falling_edge_s1;
+
+    if (zero_crossings_2[i] == 1)
+      time_last_rising_edge_s2 = time_rising_edge_s2;
+    else if (zero_crossings_2[i] == -1)
+      time_last_falling_edge_s2 = time_falling_edge_s2;
   }
-  // Add breakpoint here to check values
-  printf ("\r\nAverages made: %li\r\n", avg_cnt);
-  return avg_phase_shift;
+
+  printf("\r\nAverages made: %ld\r\n", avg_cnt);
+  return (avg_cnt > 0) ? avg_phase_shift / avg_cnt : NAN;
 }
 /* USER CODE END 0 */
 
@@ -670,7 +604,7 @@ int main(void)
       adc_done = 0;
 
       printf("Acquired %.0f samples. \r\n", (float)sample_count);
-      printf("%-6s %-5s %-5s \r\n", "Time", "ADC1", "ADC2");
+      printf("%-9s %-5s %-5s \r\n", "Time", "ADC1", "ADC2");
 
       for (int i = 0; i < MAX_SAMPLES; i++)
         ADC_timming_buffer_us[i] = i*1e6/(samples_per_period_conf*source_frequency_conf*1.);
@@ -679,20 +613,20 @@ int main(void)
         const uint16_t val_adc1 = DMA_ADC_buffer[i] & 0xFFFF;
         const uint16_t val_adc2 = (DMA_ADC_buffer[i] >> 16) & 0xFFFF;
 
-        adc1[i] = val_adc1*(3.3/0xFFFF);
-        adc2[i] = val_adc2*(3.3/0xFFFF);
+        adc1[i] = val_adc1*(3.3/0x0FFF);
+        adc2[i] = val_adc2*(3.3/0x0FFF);
 
-        printf("%06.3f %01.3f %01.3f \r\n", ADC_timming_buffer_us[i], adc1[i], adc2[i]);
+        printf("%09.2f %01.3f %01.3f \r\n", ADC_timming_buffer_us[i], adc1[i], adc2[i]);
       }
 
       printf("\r\nFiltered readings:\r\n");
-      printf("%-6s %-5s %-5s\r\n", "Time", "ADC1", "ADC2");
+      printf("%-9s %-5s %-5s\r\n", "Time", "ADC1", "ADC2");
 
       band_pass_filter(3, adc1, TEN_KHZ, TWENTY_SAMPLES);
       band_pass_filter(3, adc2, TEN_KHZ, TWENTY_SAMPLES);
 
       for (int i = 0; i < MAX_SAMPLES; i++) {
-        printf("%06.3f %01.3f %01.3f \r\n", ADC_timming_buffer_us[i], adc1[i], adc2[i]);
+        printf("%09.2f %01.3f %01.3f \r\n", ADC_timming_buffer_us[i], adc1[i], adc2[i]);
       }
 
       printf("\r\nPhase readings:\r\n");
@@ -884,8 +818,8 @@ void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
-  __disable_irq();
   printf("[%lu ms] Error! \r\n", HAL_GetTick());
+  __disable_irq();
   while (1)
   {
     __NOP();
