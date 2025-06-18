@@ -108,6 +108,8 @@ double get_linear_root(double y_0, double y_f, double time_delta);
 
 double get_phase_shift(double signal1[MAX_SAMPLES], double signal2[MAX_SAMPLES],
  enum signal_frequency frequency, enum signal_period_samples samples_per_period);
+
+double get_peak_ac(double signal1[MAX_SAMPLES], enum signal_period_samples samples_per_period);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -559,6 +561,28 @@ double get_phase_shift(double signal1[MAX_SAMPLES],
   printf("\r\nAverages made: %ld\r\n", avg_cnt);
   return (avg_cnt > 0) ? avg_phase_shift / avg_cnt : NAN;
 }
+
+/**
+ * Get average signal peak per period
+ * @param signal1 Siganl to find average peak
+ * @param samples_per_period Number of points per period
+ * @return Average of peak values per period of samples
+ */
+double get_peak_ac(double signal1[MAX_SAMPLES], enum signal_period_samples samples_per_period) {
+   double last_peak = 0.;
+   double accum_peak = 0.;
+   uint32_t cnt = 0;
+   for (size_t i = 1; i < MAX_SAMPLES; i++) {
+     if (i % samples_per_period == 0) {
+       cnt++;
+       accum_peak += last_peak;
+       last_peak = 0.;
+     }
+     last_peak = last_peak < signal1[i] ? signal1[i] : last_peak;
+   }
+   return (cnt > 0) ? (accum_peak / cnt) : 0.0;
+ }
+
 /* USER CODE END 0 */
 
 /**
@@ -659,6 +683,12 @@ int main(void)
       }
 
       printf("\r\nFinal phase: %f\r\n", phase);
+      double peak_sig1 = get_peak_ac(adc1, samples_per_period_conf);
+      double peak_sig2 = get_peak_ac(adc2, samples_per_period_conf);
+
+      printf("\r\nPeak signal 1: %f\r\n", peak_sig1);
+      printf("\r\nPeak signal 2: %f\r\n", peak_sig2);
+
 #endif
       command_ready = 0xFF;
       NVIC_SystemReset();
