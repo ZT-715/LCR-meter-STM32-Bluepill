@@ -199,7 +199,7 @@ void HAL_ADC_MspDeInit(ADC_HandleTypeDef* adcHandle)
     /**ADC1 GPIO Configuration
     PA1     ------> ADC1_IN1
     */
-    HAL_GPIO_DeInit(GPIOA, GPIO_PIN_1);
+    HAL_GPIO_DeInit(GPIOA, GPIO_PIN_2);
 
     /* ADC1 DMA DeInit */
     HAL_DMA_DeInit(adcHandle->DMA_Handle);
@@ -218,7 +218,7 @@ void HAL_ADC_MspDeInit(ADC_HandleTypeDef* adcHandle)
     /**ADC2 GPIO Configuration
     PA2     ------> ADC2_IN2
     */
-    HAL_GPIO_DeInit(GPIOA, GPIO_PIN_2);
+    HAL_GPIO_DeInit(GPIOA, GPIO_PIN_7);
 
   /* USER CODE BEGIN ADC2_MspDeInit 1 */
 

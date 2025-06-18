@@ -41,7 +41,7 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define MAX_SAMPLES 200
-
+//#define SWO_DEBUG
 #define CPU_FREQUENCY 72000000
 /* USER CODE END PD */
 
@@ -68,8 +68,8 @@ enum signal_period_samples {TWENTY_SAMPLES=20, TEN_SAMPLES=10, FIVE_SAMPLES=5, T
 uint32_t samples_per_period_conf = TWENTY_SAMPLES;
 uint32_t source_frequency_conf = ONE_KHZ;
 
-uint32_t DMA_ADC_buffer[MAX_SAMPLES] = {[0 ... MAX_SAMPLES-1] = 0x00000000};
-float ADC_timming_buffer_us[MAX_SAMPLES] = {[0 ... MAX_SAMPLES-1] = 0.};
+uint32_t DMA_ADC_buffer[MAX_SAMPLES] = {0x00000000};
+float ADC_timming_buffer_us[MAX_SAMPLES] = {0};
 
 volatile uint32_t sample_count = 0;
 volatile uint8_t adc_done = 0;
@@ -100,11 +100,6 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc);
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim);
 void HAL_ADC_ErrorCallback(ADC_HandleTypeDef *hadc);
 
-HAL_StatusTypeDef band_pass_filter(uint8_t order,
-                                   double signal[MAX_SAMPLES],
-                                   enum signal_frequency src_frequency,
-                                   enum signal_period_samples samples_per_period);
-
 double get_linear_root(double y_0, double y_f, double time_delta);
 
 double get_phase_shift(double signal1[MAX_SAMPLES], double signal2[MAX_SAMPLES],
@@ -113,33 +108,33 @@ double get_phase_shift(double signal1[MAX_SAMPLES], double signal2[MAX_SAMPLES],
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+#ifdef SWO_DEBUG
 // Function may conflict with syscalls.c, erase them in this case.
+ int __io_putchar(int ch) {
+   while (ITM->PORT[0U].u32 == 0UL) {
+     __NOP();
+   }
+   ITM->PORT[0U].u8 = (uint8_t)ch;
+   return ch;
+ }
 
-// int __io_putchar(int ch) {
-//   while (ITM->PORT[0U].u32 == 0UL) {
-//     __NOP();
-//   }
-//   ITM->PORT[0U].u8 = (uint8_t)ch;
-//   return ch;
-// }
-//
-//// Function may conflict with syscalls.c, erase them in this case.
-// int _write(int file, char *ptr, int len) {
-//   for (int i = 0; i < len; i++) {
-//     __io_putchar(*ptr);
-//     ptr++;
-//   }
-//   return len;
-// }
-
-//@TODO checar retorno das funções
+// Function may conflict with syscalls.c, erase them in this case.
+ int _write(int file, char *ptr, int len) {
+   for (int i = 0; i < len; i++) {
+     __io_putchar(*ptr);
+     ptr++;
+   }
+   return len;
+ }
+#endif
+#ifndef SWO_DEBUG
 int _write(int file, char *data, int len) {
     while (CDC_Transmit_FS((uint8_t*)data, len) == USBD_BUSY) {
     	__NOP();
     }
     return len;
 }
-
+#endif
 
 /**
  * Configures TIM3 to trigger samples_per_period*src_frequency times per second,
@@ -308,39 +303,42 @@ HAL_StatusTypeDef Start_Dual_ADC_DMA(
     return HAL_ERROR;
   }
 
+  // Clean state flags
+  adc_done = 0;
+  sample_count = 0;
   HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
-// || time_base_config(&htim4, MICROSECOND)
+
+  if (HAL_ADC_Start(&hadc2) != HAL_OK) {
+    printf("Error: Failed to start ADC2\r\n");
+    return HAL_ERROR;
+  }
+
+  if (HAL_ADC_PollForConversion(&hadc2, 10) != HAL_OK) {
+      printf("Error: Failed to read ADC2\r\n");
+//      return HAL_ERROR;
+    }
+
+  if (HAL_ADC_Stop(&hadc2) != HAL_OK) {
+      printf("Error: Failed to stop ADC2\r\n");
+      return HAL_ERROR;
+    }
+
   if (ADC_base_TIM3_config(&htim3, src_frequency, samples_per_period) != HAL_OK) {
     printf("Error: Failed to configure timers\r\n");
     return HAL_ERROR;
   }
-
-  if (HAL_ADCEx_Calibration_Start(&hadc1) != HAL_OK || HAL_ADCEx_Calibration_Start(&hadc2) != HAL_OK) {
-    printf("Error: Failed to calibrate ADC\r\n");
-    return HAL_ERROR;
-  }
-
-   if (HAL_ADC_Start(&hadc2) != HAL_OK) {
-     printf("Error: Failed to start ADC2\r\n");
-     return HAL_ERROR;
-   }
 
   if (HAL_ADCEx_MultiModeStart_DMA(&hadc1, DMA_ADC_buffer, number_of_samples) != HAL_OK) {
     printf("Error: Failed to start ADC1\r\n");
     return HAL_ERROR;
   }
 
-  // Clean state flags
-  adc_done = 0;
-  sample_count = 0;
-
-  // __HAL_TIM_SET_COUNTER(&htim4, 0);
   __HAL_TIM_SET_COUNTER(&htim3, 0);
-// HAL_TIM_Base_Start(&htim4) != HAL_OK ||
   if (HAL_TIM_Base_Start_IT(&htim3) != HAL_OK) {
     printf("Error: Failed to start timer3\r\n");
     return HAL_ERROR;
   }
+
   return HAL_OK;
 }
 
@@ -348,9 +346,10 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 {
   if (hadc->Instance == ADC1)
   {
-    HAL_TIM_Base_Stop_IT(&htim3);
     HAL_ADCEx_MultiModeStop_DMA(&hadc1);
-    HAL_ADC_Stop(&hadc2);
+//    HAL_ADC_Stop(&hadc2);
+    HAL_TIM_Base_Stop_IT(&htim3);
+
     adc_done = 1;
   }
 }
@@ -587,8 +586,21 @@ int main(void)
   printf("\r"); // start serial
   printf("Start Program:\r\n");
   command_ready = 0xFF;
+
   samples_per_period_conf = TWENTY_SAMPLES;
-  source_frequency_conf = ONE_KHZ;
+  source_frequency_conf = TEN_KHZ;
+
+  if (HAL_ADCEx_Calibration_Start(&hadc1) != HAL_OK || HAL_ADCEx_Calibration_Start(&hadc2) != HAL_OK) {
+    printf("Error: Failed to calibrate ADC\r\n");
+    return HAL_ERROR;
+  }
+
+
+#ifdef SWO_DEBUG
+  Rx[0] = '2';
+  Rx[1] = '\0';
+#endif
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -610,30 +622,31 @@ int main(void)
         ADC_timming_buffer_us[i] = i*1e6/(samples_per_period_conf*source_frequency_conf*1.);
 
       for (int i = 0; i < MAX_SAMPLES; i++) {
-        const uint16_t val_adc1 = DMA_ADC_buffer[i] & 0xFFFF;
+        const uint16_t val_adc1 = (DMA_ADC_buffer[i] & 0xFFFF);
         const uint16_t val_adc2 = (DMA_ADC_buffer[i] >> 16) & 0xFFFF;
 
-        adc1[i] = val_adc1*(3.3/0x0FFF);
-        adc2[i] = val_adc2*(3.3/0x0FFF);
+        adc1[i] = round(val_adc1*(3300.0/0x0FFF))/1000;
+        adc2[i] = round(val_adc2*(3300.0/0x0FFF))/1000;
 
         printf("%09.2f %01.3f %01.3f \r\n", ADC_timming_buffer_us[i], adc1[i], adc2[i]);
       }
-
+#ifndef SWO_DEBUG
       printf("\r\nFiltered readings:\r\n");
       printf("%-9s %-5s %-5s\r\n", "Time", "ADC1", "ADC2");
 
-      band_pass_filter(3, adc1, TEN_KHZ, TWENTY_SAMPLES);
-      band_pass_filter(3, adc2, TEN_KHZ, TWENTY_SAMPLES);
+      band_pass_filter(1, adc1, source_frequency_conf, samples_per_period_conf);
+      band_pass_filter(1, adc2, source_frequency_conf, samples_per_period_conf);
 
       for (int i = 0; i < MAX_SAMPLES; i++) {
         printf("%09.2f %01.3f %01.3f \r\n", ADC_timming_buffer_us[i], adc1[i], adc2[i]);
       }
 
       printf("\r\nPhase readings:\r\n");
-      double phase = get_phase_shift(adc1, adc2, TEN_KHZ, TWENTY_SAMPLES);
+      double phase = get_phase_shift(adc1, adc2, source_frequency_conf, samples_per_period_conf);
       printf("\r\nFinal phase: %f\r\n", phase);
-
+#endif
       command_ready = 0xFF;
+      NVIC_SystemReset();
     }
     if (command_ready == 0xFF) {
       uint8_t show_menu = 0xFF;
@@ -728,10 +741,11 @@ int main(void)
       }
       else if (strcmp((char*)Rx, "4") == 0) {
         printf("Reset...\r\n");
+        Rx[0] = '3';
+        Rx[0] = '3';
+        Rx[2] = '\0';
         HAL_Delay(100);  // Optional: allow USB to flush message
-        command_ready = 0xFF;
         cmd_index = 0;
-        memset(Rx, 0x00, sizeof(Rx));
         NVIC_SystemReset();  // Reset the MCU
       }
 
@@ -743,14 +757,21 @@ int main(void)
         "3. Settings\r\n"
         "4. Reset MCU\r\n"
         "Enter choice: ";
+#ifndef SWO_DEBUG
         while (CDC_Transmit_FS((uint8_t*)menu, strlen(menu)) == USBD_BUSY) {
           __NOP();
         }
+#endif
       }
 
       cmd_index = 0;
       command_ready = 0x00;
       memset(Rx, 0, sizeof(Rx));
+
+#ifdef SWO_DEBUG
+  Rx[0] = '2';
+  Rx[1] = '\0';
+#endif
     }
     /* USER CODE END WHILE */
 
