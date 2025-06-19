@@ -62,11 +62,12 @@ extern TIM_HandleTypeDef htim3;
 extern TIM_HandleTypeDef htim4;
 
 enum time_base {TENTH_OF_MICROSECOND, MICROSECOND, TENTH_MILLISECOND};
-enum signal_frequency {ONE_MHZ=1000000, ONE_HUNDRED_KHZ=100000, TEN_KHZ=10000, ONE_KHZ=1000, ONE_HUNDRED_HZ=100, SIXTY_HZ=60};
+enum signal_frequency {FIVE_MHZ=5000000, ONE_MHZ=1000000, ONE_HUNDRED_KHZ=100000, TEN_KHZ=10000, ONE_KHZ=1000, ONE_HUNDRED_HZ=100, SIXTY_HZ=60};
 enum signal_period_samples {TWENTY_SAMPLES=20, TEN_SAMPLES=10, FIVE_SAMPLES=5, TWO_SAMPLES=2};
 
 uint32_t samples_per_period_conf = TWENTY_SAMPLES;
 uint32_t source_frequency_conf = ONE_KHZ;
+double sampling_frequency_conf = 0.; // defined on TIM3 config
 
 uint32_t DMA_ADC_buffer[MAX_SAMPLES] = {0};
 float ADC_timming_buffer_us[MAX_SAMPLES] = {0};
@@ -154,30 +155,55 @@ int _write(int file, char *data, int len) {
  */
 HAL_StatusTypeDef ADC_base_TIM3_config(TIM_HandleTypeDef *htim3,
                                        enum signal_frequency src_frequency,
-                                       enum signal_period_samples samples_per_period)
-{
-  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
-  TIM_MasterConfigTypeDef sMasterConfig = {0};
+                                       enum signal_period_samples samples_per_period) {
+   TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+   TIM_MasterConfigTypeDef sMasterConfig = {0};
 
-  uint32_t timer_frequency = src_frequency*samples_per_period;
+   uint32_t sample_frequency = src_frequency*samples_per_period;
 
-  uint32_t prescaler = 0;
-  uint32_t period = 0;
+   uint32_t prescaler = 0;
+   uint32_t period = 0;
 
-  // (CPU_FREQUENCY/((1+prescaler)*(1+period)) == timer_frequency)
-  if (CPU_FREQUENCY/timer_frequency > 0xFFFF) {
-    period = 0xFFFF;
-    if (CPU_FREQUENCY/((1+prescaler)*timer_frequency) - 1 > 0xFFFF) {
-      printf("Error: Sampling frequency %lu beyond period limit for TIM3\r\n", timer_frequency);
-      return HAL_ERROR;
+   // (CPU_FREQUENCY/((1+prescaler)*(1+period)) == timer_frequency)
+   // Adjust sampling frequency if too high
+   if (src_frequency == 5000000 ) {
+     // Captura uma amostra a cada 10 períodos do sinal, de modo que mesmo com sinal de 5 MHz,
+     // o sampling rate é de ~ 500 kHz
+     prescaler = 0;
+     period = 145 - 1; // virtual 72 Msps ou 14 samples
+     samples_per_period_conf = 14;
+   }
+   else if (src_frequency == 1000000) {
+     prescaler = 0;
+     period = 147 - 1; // virtual 24 Msps or 24 samples
+     samples_per_period_conf = 24;
+   }
+   else if (src_frequency == 100000) {
+     prescaler = 0;
+     period = 756 - 1; // virtal 2 Msps
+     samples_per_period_conf = 20;
+   }else {
+    if (CPU_FREQUENCY/sample_frequency > 0xFFFF) {
+      period = 0xFFFF;
+      if (CPU_FREQUENCY/((1+prescaler)*sample_frequency) - 1 > 0xFFFF) {
+        printf("ERROR: Sampling frequency %lu beyond period limit for TIM3\r\n", sample_frequency);
+        return HAL_ERROR;
+      }
+      prescaler = CPU_FREQUENCY/((1+prescaler)*sample_frequency) - 1;
     }
-    prescaler = CPU_FREQUENCY/((1+prescaler)*timer_frequency) - 1;
-  }
-  else {
-    prescaler = 0;
-    period = CPU_FREQUENCY/timer_frequency - 1;
+    else {
+      prescaler = 0;
+      period = CPU_FREQUENCY/sample_frequency - 1;
+    }
   }
 
+  sampling_frequency_conf = remainder((1.0 + period)*(1.0 + prescaler)/CPU_FREQUENCY, 1./src_frequency);
+  if (src_frequency > TEN_KHZ) {
+     printf("WARNING: Sample rate override:\r\n"
+            "-> Virtual samples per period: %lu\r\n"
+            "-> Virtual sampling frequency: %.0f MHz\r\n",
+       samples_per_period_conf, sampling_frequency_conf/1000000.0);
+  }
   htim3->Instance = TIM3;
   htim3->Init.Prescaler = prescaler;
   htim3->Init.CounterMode = TIM_COUNTERMODE_UP;
@@ -204,7 +230,6 @@ HAL_StatusTypeDef ADC_base_TIM3_config(TIM_HandleTypeDef *htim3,
   {
     return HAL_ERROR;
   }
-
   return HAL_OK;
 }
 
@@ -245,7 +270,7 @@ HAL_StatusTypeDef time_base_config(TIM_HandleTypeDef *htim4, enum time_base time
 
   // (CPU_FREQUENCY/((1+prescaler)*(1+period)) == timer_frequency)
   if (CPU_FREQUENCY/timer_frequency > 0xFFFF) {
-      printf("Error: Time base frequency %lu beyond prescaler limit for TIM4\r\n", timer_frequency);
+      printf("ERROR: Time base frequency %lu beyond prescaler limit for TIM4\r\n", timer_frequency);
       return HAL_ERROR;
   }
   // Count goes up un time base clock
@@ -305,7 +330,7 @@ HAL_StatusTypeDef Start_Dual_ADC_DMA(
   const uint32_t number_of_samples,
   uint32_t* DMA_ADC_buffer) {
   if (number_of_samples > MAX_SAMPLES) {
-    printf ("Error: Number of samples is greater than MAX_SAMPLES\r\n");
+    printf ("ERROR: Number of samples is greater than MAX_SAMPLES\r\n");
     return HAL_ERROR;
   }
 
@@ -315,33 +340,23 @@ HAL_StatusTypeDef Start_Dual_ADC_DMA(
   HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
 
   if (HAL_ADC_Start(&hadc2) != HAL_OK) {
-    printf("Error: Failed to start ADC2\r\n");
+    printf("ERROR: Failed to start ADC2\r\n");
     return HAL_ERROR;
   }
 
-  if (HAL_ADC_PollForConversion(&hadc2, 10) != HAL_OK) {
-      printf("Error: Failed to read ADC2\r\n");
-//      return HAL_ERROR;
-    }
-
-  if (HAL_ADC_Stop(&hadc2) != HAL_OK) {
-      printf("Error: Failed to stop ADC2\r\n");
-      return HAL_ERROR;
-    }
-
   if (ADC_base_TIM3_config(&htim3, src_frequency, samples_per_period) != HAL_OK) {
-    printf("Error: Failed to configure timers\r\n");
+    printf("ERROR: Failed to configure timers\r\n");
     return HAL_ERROR;
   }
 
   if (HAL_ADCEx_MultiModeStart_DMA(&hadc1, DMA_ADC_buffer, number_of_samples) != HAL_OK) {
-    printf("Error: Failed to start ADC1\r\n");
+    printf("ERROR: Failed to start ADC1\r\n");
     return HAL_ERROR;
   }
 
   __HAL_TIM_SET_COUNTER(&htim3, 0);
   if (HAL_TIM_Base_Start_IT(&htim3) != HAL_OK) {
-    printf("Error: Failed to start timer3\r\n");
+    printf("ERROR: Failed to start timer3\r\n");
     return HAL_ERROR;
   }
 
@@ -367,7 +382,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 }
 
 void HAL_ADC_ErrorCallback(ADC_HandleTypeDef *hadc) {
-  printf("[%lu ms] Error: ", HAL_GetTick());
+  printf("[%lu ms] ERROR: ", HAL_GetTick());
   if (hadc->Instance == ADC1) {
     printf("ADC1 ");
     }
@@ -459,7 +474,7 @@ double get_phase_shift(double signal1[MAX_SAMPLES],
                        const enum signal_period_samples samples_per_period) {
 
   if (MAX_SAMPLES < 6*samples_per_period) {
-    printf("Error: Less than 4 periods of sampling. Unable to filter properly.\r\n");
+    printf("ERROR: Less than 4 periods of sampling. Unable to filter properly.\r\n");
     return NAN;
   }
 
@@ -626,7 +641,7 @@ int main(void)
   source_frequency_conf = TEN_KHZ;
 
   if (HAL_ADCEx_Calibration_Start(&hadc1) != HAL_OK || HAL_ADCEx_Calibration_Start(&hadc2) != HAL_OK) {
-    printf("Error: Failed to calibrate ADC\r\n");
+    printf("ERROR: Failed to calibrate ADC\r\n");
     return HAL_ERROR;
   }
 
@@ -670,6 +685,7 @@ int main(void)
       printf("%-9s %-5s %-5s\r\n", "Time", "ADC1", "ADC2");
 
       band_pass_filter(1, adc1, source_frequency_conf, samples_per_period_conf);
+      band_pass_filter(1, adc2, source_frequency_conf, samples_per_period_conf);
 
       printf("\r\nPhase readings:\r\n");
       double phase = get_phase_shift(adc1, adc2, source_frequency_conf, samples_per_period_conf);
@@ -731,6 +747,7 @@ int main(void)
           "314. 10 kHz\r\n"
           "315. 100 kHz\r\n"
           "316. 1 MHz\r\n"
+          "317. 5 MHz\r\n"
           "33. Go back\r\n"
           "Enter choice: ";
         while (CDC_Transmit_FS((uint8_t*)signal_frequencies, strlen(signal_frequencies)) == USBD_BUSY) {}
@@ -756,6 +773,9 @@ int main(void)
       }
       else if (strcmp((char*)Rx, "316") == 0) {
         source_frequency_conf = ONE_MHZ;
+      }
+      else if (strcmp((char*)Rx, "317") == 0) {
+        source_frequency_conf = FIVE_MHZ;
       }
       else if (strcmp((char*)Rx, "32") == 0) {
         char samplings[] =
