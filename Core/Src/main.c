@@ -40,8 +40,8 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define MAX_SAMPLES 200
-//#define SWO_DEBUG
+#define MAX_SAMPLES 256
+// #define SWO_DEBUG
 #define CPU_FREQUENCY 72000000
 /* USER CODE END PD */
 
@@ -58,14 +58,11 @@ extern uint8_t Rx[APP_RX_DATA_SIZE];
 extern volatile uint8_t command_ready;
 extern volatile uint8_t cmd_index;
 
-extern TIM_HandleTypeDef htim3;
-extern TIM_HandleTypeDef htim4;
-
-typedef enum {
-  TENTH_OF_MICROSECOND,
-  MICROSECOND,
-  TENTH_MILLISECOND
-} time_base_t ;
+// typedef enum {
+//   TENTH_OF_MICROSECOND,
+//   MICROSECOND,
+//   TENTH_MILLISECOND
+// } time_base_t;
 
 typedef enum {
   FIVE_MHZ=5000000,
@@ -75,7 +72,7 @@ typedef enum {
   ONE_KHZ=1000,
   ONE_HUNDRED_HZ=100,
   SIXTY_HZ=60
-} signal_frequency_t ;
+} signal_frequency_t;
 
 typedef enum {TWENTY_SAMPLES=20,
   TEN_SAMPLES=10,
@@ -84,27 +81,35 @@ typedef enum {TWENTY_SAMPLES=20,
 } signal_period_samples_t ;
 
 typedef enum {
-  ONE_HUNDRED_OHMS=100,
+  TWO_HUNDRED_OHMS=200,
   ONE_K_OHMS=1000,
-  TEN_K_OHMS=10000
-} resistance_values_t ;
+  TEN_K_OHMS=10000,
+  ONE_HUNDRED_K_OHMS=100000
+} resistance_values_t;
+
+typedef enum {
+  INDUCTOR_LR,
+  CAPACITOR_RC,
+  RESISTOR_LR
+} element_configuration_t;
 
 typedef struct z_t {
-  double real;
-  double imaginary;
+  long double real;
+  long double imaginary;
 } z_t;
 
 uint32_t samples_per_period_conf = TWENTY_SAMPLES;
 uint32_t source_frequency_conf = ONE_KHZ;
 double sampling_frequency_conf = 0.; // defined on TIM3 config
 uint32_t resistor_conf = TEN_K_OHMS;
+element_configuration_t element_conf = CAPACITOR_RC;
 
 uint32_t DMA_ADC_buffer[MAX_SAMPLES] = {0};
-float ADC_timming_buffer_us[MAX_SAMPLES] = {0};
+//float ADC_timming_buffer_us[MAX_SAMPLES] = {0};
 
 int8_t zero_crossings_1[MAX_SAMPLES] = {0};
 int8_t zero_crossings_2[MAX_SAMPLES] = {0};
-float phase_shift[MAX_SAMPLES] = {0};
+//float phase_shift[MAX_SAMPLES] = {0};
 
 volatile uint32_t sample_count = 0;
 volatile uint8_t adc_done = 0;
@@ -122,7 +127,7 @@ HAL_StatusTypeDef ADC_base_TIM3_config(TIM_HandleTypeDef *htim3,
                                        signal_frequency_t src_frequency,
                                        signal_period_samples_t samples_per_period);
 
-HAL_StatusTypeDef time_base_config(TIM_HandleTypeDef *htim4, time_base_t time_base);
+// HAL_StatusTypeDef time_base_config(TIM_HandleTypeDef *htim4, time_base_t time_base);
 
 HAL_StatusTypeDef ADC_Dual_config(ADC_HandleTypeDef *adc1, ADC_HandleTypeDef *adc2);
 
@@ -131,16 +136,15 @@ HAL_StatusTypeDef Start_Dual_ADC_DMA(signal_frequency_t src_frequency,
   uint32_t number_of_samples,
   uint32_t* DMA_ADC_buffer);
 
-void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc);
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim);
-void HAL_ADC_ErrorCallback(ADC_HandleTypeDef *hadc);
-
 double get_linear_root(double y_0, double y_f, double time_delta);
 
 double get_phase_shift(double signal1[MAX_SAMPLES], double signal2[MAX_SAMPLES],
  signal_frequency_t frequency, signal_period_samples_t samples_per_period);
 
 double get_peak_ac(double signal1[MAX_SAMPLES], signal_period_samples_t samples_per_period);
+
+z_t get_z(double V1, double V2, double V2_phase_degrees,
+  resistance_values_t series_resistance, element_configuration_t config);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -165,8 +169,9 @@ double get_peak_ac(double signal1[MAX_SAMPLES], signal_period_samples_t samples_
  }
 #endif
 #ifndef SWO_DEBUG
-int _write(int file, char *data, int len) {
-    while (CDC_Transmit_FS((uint8_t*)data, len) == USBD_BUSY) {
+int _write(int file, char *ptr, int len) {
+	(void)file;
+    while (CDC_Transmit_FS((uint8_t*)ptr, len) == USBD_BUSY) {
     	__NOP();
     }
     return len;
@@ -179,7 +184,7 @@ int _write(int file, char *data, int len) {
  * in signal_samples enum
  *
  * @param htim3 Handler for TIM3
- * @param src_frequency Frequency from the base signal for exitation
+ * @param src_frequency Frequency from the base signal for excitation
  * @param samples_per_period Number of samples per period of the source frequency
  * @return HAL_OK on success, HAL_ERROR on failure
  */
@@ -226,14 +231,13 @@ HAL_StatusTypeDef ADC_base_TIM3_config(TIM_HandleTypeDef *htim3,
       period = CPU_FREQUENCY/sample_frequency - 1;
     }
   }
+//
+  sampling_frequency_conf = samples_per_period_conf*src_frequency;
+  printf("WARNING: Sample rate override:\r\n"
+		"-> Samples per period: %lu\r\n"
+		"-> Sampling frequency: %.0f MHz\r\n",
+   samples_per_period_conf, sampling_frequency_conf/1000000.0);
 
-  sampling_frequency_conf = remainder((1.0 + period)*(1.0 + prescaler)/CPU_FREQUENCY, 1./src_frequency);
-  if (sampling_frequency_conf > 500000) {
-     printf("WARNING: Sample rate override:\r\n"
-            "-> Virtual samples per period: %lu\r\n"
-            "-> Virtual sampling frequency: %.0f MHz\r\n",
-       samples_per_period_conf, sampling_frequency_conf/1000000.0);
-  }
   htim3->Instance = TIM3;
   htim3->Init.Prescaler = prescaler;
   htim3->Init.CounterMode = TIM_COUNTERMODE_UP;
@@ -263,74 +267,74 @@ HAL_StatusTypeDef ADC_base_TIM3_config(TIM_HandleTypeDef *htim3,
   return HAL_OK;
 }
 
-/**
- * Configures TIM4 for time base, each count is a time_base step, up to 0xFFFF where
- * the timer overflows and starts counting from 0.
- *
- * Counter must be reset with htim4.Instance->CNT = 0 to ensure the value
- * has a known reference.
- *
- * Read is done the same way, accessing htim4.Instance->CNT
- *
- * @param htim4 handler address for timer 4
- * @param time_base enum with clock step size
- * @return HAL_OK on success, HAL_ERROR on failure
- */
-HAL_StatusTypeDef time_base_config(TIM_HandleTypeDef *htim4, time_base_t time_base) {
-  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
-  TIM_MasterConfigTypeDef sMasterConfig = {0};
-
-  uint32_t timer_frequency = 0;
-  switch (time_base) {
-    case TENTH_OF_MICROSECOND:
-      timer_frequency = 10000000;
-    break;
-    case MICROSECOND:
-      timer_frequency = 1000000;
-    break;
-    case TENTH_MILLISECOND:
-      timer_frequency = 10000;
-    break;
-    default:
-      return HAL_ERROR;
-  }
-
-  uint32_t prescaler = 0;
-  uint32_t period = 0;
-
-  // (CPU_FREQUENCY/((1+prescaler)*(1+period)) == timer_frequency)
-  if (CPU_FREQUENCY/timer_frequency > 0xFFFF) {
-      printf("ERROR: Time base frequency %lu beyond prescaler limit for TIM4\r\n", timer_frequency);
-      return HAL_ERROR;
-  }
-  // Count goes up un time base clock
-  prescaler = CPU_FREQUENCY/timer_frequency - 1;
-  period = 0xFFFF;
-
-  htim4->Instance = TIM4;
-  htim4->Init.Prescaler = prescaler;
-  htim4->Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim4->Init.Period = period;
-  htim4->Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-  htim4->Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-
-  if (HAL_TIM_Base_Init(htim4) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
-  if (HAL_TIM_ConfigClockSource(htim4, &sClockSourceConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
-  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
-  if (HAL_TIMEx_MasterConfigSynchronization(htim4, &sMasterConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  return HAL_OK;
-}
+// /**
+//  * Configures TIM4 for time base, each count is a time_base step, up to 0xFFFF where
+//  * the timer overflows and starts counting from 0.
+//  *
+//  * Counter must be reset with htim4.Instance->CNT = 0 to ensure the value
+//  * has a known reference.
+//  *
+//  * Read is done the same way, accessing htim4.Instance->CNT
+//  *
+//  * @param htim4 handler address for timer 4
+//  * @param time_base enum with clock step size
+//  * @return HAL_OK on success, HAL_ERROR on failure
+//  */
+// HAL_StatusTypeDef time_base_config(TIM_HandleTypeDef *htim4, time_base_t time_base) {
+//   TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+//   TIM_MasterConfigTypeDef sMasterConfig = {0};
+//
+//   uint32_t timer_frequency = 0;
+//   switch (time_base) {
+//     case TENTH_OF_MICROSECOND:
+//       timer_frequency = 10000000;
+//     break;
+//     case MICROSECOND:
+//       timer_frequency = 1000000;
+//     break;
+//     case TENTH_MILLISECOND:
+//       timer_frequency = 10000;
+//     break;
+//     default:
+//       return HAL_ERROR;
+//   }
+//
+//   uint32_t prescaler = 0;
+//   uint32_t period = 0;
+//
+//   // (CPU_FREQUENCY/((1+prescaler)*(1+period)) == timer_frequency)
+//   if (CPU_FREQUENCY/timer_frequency > 0xFFFF) {
+//       printf("ERROR: Time base frequency %lu beyond prescaler limit for TIM4\r\n", timer_frequency);
+//       return HAL_ERROR;
+//   }
+//   // Count goes up un time base clock
+//   prescaler = CPU_FREQUENCY/timer_frequency - 1;
+//   period = 0xFFFF;
+//
+//   htim4->Instance = TIM4;
+//   htim4->Init.Prescaler = prescaler;
+//   htim4->Init.CounterMode = TIM_COUNTERMODE_UP;
+//   htim4->Init.Period = period;
+//   htim4->Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+//   htim4->Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+//
+//   if (HAL_TIM_Base_Init(htim4) != HAL_OK)
+//   {
+//     Error_Handler();
+//   }
+//   sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+//   if (HAL_TIM_ConfigClockSource(htim4, &sClockSourceConfig) != HAL_OK)
+//   {
+//     Error_Handler();
+//   }
+//   sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+//   sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+//   if (HAL_TIMEx_MasterConfigSynchronization(htim4, &sMasterConfig) != HAL_OK)
+//   {
+//     Error_Handler();
+//   }
+//   return HAL_OK;
+// }
 
 /**
  * Configures and starts ADC in dual mode with TIM3 trigger, DMA to automatically save all acquisitions
@@ -363,16 +367,10 @@ HAL_StatusTypeDef Start_Dual_ADC_DMA(
     printf ("ERROR: Number of samples is greater than MAX_SAMPLES\r\n");
     return HAL_ERROR;
   }
-
   // Clean state flags
   adc_done = 0;
   sample_count = 0;
   HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
-
-  if (HAL_ADC_Start(&hadc2) != HAL_OK) {
-    printf("ERROR: Failed to start ADC2\r\n");
-    return HAL_ERROR;
-  }
 
   if (ADC_base_TIM3_config(&htim3, src_frequency, samples_per_period) != HAL_OK) {
     printf("ERROR: Failed to configure timers\r\n");
@@ -397,10 +395,8 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 {
   if (hadc->Instance == ADC1)
   {
-    HAL_ADCEx_MultiModeStop_DMA(&hadc1);
-//    HAL_ADC_Stop(&hadc2);
-    HAL_TIM_Base_Stop_IT(&htim3);
-
+    // HAL_ADCEx_MultiModeStop_DMA(&hadc1);
+    HAL_TIM_Base_Stop(&htim3);
     adc_done = 1;
   }
 }
@@ -411,31 +407,6 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
     }
 }
 
-void HAL_ADC_ErrorCallback(ADC_HandleTypeDef *hadc) {
-  printf("[%lu ms] ERROR: ", HAL_GetTick());
-  if (hadc->Instance == ADC1) {
-    printf("ADC1 ");
-    }
-  else if (hadc->Instance == ADC2) {
-      printf("ADC2 ");
-  }
-  printf("Code: 0x%lX\r\n", hadc->ErrorCode);
-  if (hadc->ErrorCode & HAL_ADC_ERROR_OVR) {
-      printf(" - Overrun error (new data before old was read)\r\n");
-  }
-
-  if (hadc->ErrorCode & HAL_ADC_ERROR_DMA) {
-      printf(" - DMA transfer error\r\n");
-  }
-
-  if (hadc->ErrorCode & HAL_ADC_ERROR_INTERNAL) {
-      printf(" - Internal ADC HAL error\r\n");
-  }
-
-  if (hadc->ErrorCode == HAL_ADC_ERROR_NONE) {
-      printf(" - No error\r\n");
-  }
-}
 
 /**
  * Applies to signal a band-pass filter spanning two octaves, from half src_frequency to twice the src_frequency.
@@ -453,10 +424,10 @@ HAL_StatusTypeDef band_pass_filter(const uint8_t order,
   double signal_frequency = src_frequency;
   double sample_frequency = src_frequency*samples_per_period;
 
-  double low_cutoff_frequency = signal_frequency/4;
-  double high_cutoff_frequency = signal_frequency*4;
-  double alpha = exp(- 2*M_PI*low_cutoff_frequency/sample_frequency);
-  double beta = 1/(1+(2*M_PI*high_cutoff_frequency/sample_frequency));
+  double low_cutoff_frequency = signal_frequency/2;
+  double high_cutoff_frequency = signal_frequency*2;
+  double alpha = exp(- 2*M_PI*high_cutoff_frequency/sample_frequency);
+  double beta = 1/(1+(2*M_PI*low_cutoff_frequency/sample_frequency));
 
   // Low pass filter
   for (int j = 0; j < order; j++) {
@@ -503,12 +474,15 @@ double get_phase_shift(double signal1[MAX_SAMPLES],
                        const signal_frequency_t frequency,
                        const signal_period_samples_t samples_per_period) {
 
-  if (MAX_SAMPLES < 6*samples_per_period) {
-    printf("ERROR: Less than 4 periods of sampling. Unable to filter properly.\r\n");
+  if (MAX_SAMPLES < 2*samples_per_period) {
+    printf("ERROR: Less than 2 periods of sampling. Unable to filter properly.\r\n");
     return NAN;
   }
 
-  const double time_step = 1./(frequency*samples_per_period);
+  double time_step = 1./(frequency*samples_per_period);
+
+//  int8_t zero_crossings_1[MAX_SAMPLES] = {0};
+//  int8_t zero_crossings_2[MAX_SAMPLES] = {0};
 
   for (long i = 1; i < MAX_SAMPLES; i++) {
     int8_t change_of_polarity1 = 0;
@@ -517,14 +491,14 @@ double get_phase_shift(double signal1[MAX_SAMPLES],
     if (signal1[i] > 0. && signal1[i-1] < 0.) {
       change_of_polarity1 = 1;
     }
-    else if (signal1[i] < 0. && signal1[i+1] > 0.) {
+    else if (signal1[i] < 0. && signal1[i-1] > 0.) {
       change_of_polarity1 = -1;
     }
 
     if (signal2[i] > 0. && signal2[i-1] < 0.) {
       change_of_polarity2 = 1;
     }
-    else if (signal2[i] < 0. && signal2[i+1] > 0.) {
+    else if (signal2[i] < 0. && signal2[i-1] > 0.) {
       change_of_polarity2 = -1;
     }
 
@@ -545,7 +519,7 @@ double get_phase_shift(double signal1[MAX_SAMPLES],
 
   // Calcula relação atraso e utiliza angulo inverso caso a diferença seja maior
   // que 180 graus, assim definindo qual está atrasado em relação ao outro.
-  for (long i = samples_per_period; i < MAX_SAMPLES - samples_per_period; i++) {
+  for (long i = samples_per_period; i < MAX_SAMPLES; i++) {
     double time_rising_edge_s1 = 0.;
     double time_falling_edge_s1 = 0.;
 
@@ -572,21 +546,21 @@ double get_phase_shift(double signal1[MAX_SAMPLES],
 
     // @TODO testar diferença entre tempo calculado e definido do período
     if (time_last_rising_edge_s1 != 0 && time_last_rising_edge_s2 != 0 && zero_crossings_1[i] == 1) {
-      float phase_diff = 360*((time_rising_edge_s1 - time_last_rising_edge_s2)/(time_rising_edge_s1 - time_last_rising_edge_s1));
+      double phase_diff = 360*((time_rising_edge_s1 - time_last_rising_edge_s2)/(time_rising_edge_s1 - time_last_rising_edge_s1));
       if (phase_diff > 180.0)
         phase_diff -= 360.0;
       printf("R: %3.2f\r\n", phase_diff);
-      phase_shift[i] = phase_diff;
+//      phase_shift[i] = phase_diff;
 
       avg_phase_shift += phase_diff;
       avg_cnt++;
     }
     else if (time_last_falling_edge_s1 != 0 && time_last_falling_edge_s2 != 0 && zero_crossings_1[i] == -1) {
-      float phase_diff = 360*(time_falling_edge_s1 - time_last_falling_edge_s2)/(time_falling_edge_s1 - time_last_falling_edge_s1);
+      double phase_diff = 360*(time_falling_edge_s1 - time_last_falling_edge_s2)/(time_falling_edge_s1 - time_last_falling_edge_s1);
       if (phase_diff > 180.0)
         phase_diff -= 360.0;
       printf("F: %3.2f\r\n", phase_diff);
-      phase_shift[i] = phase_diff;
+//      phase_shift[i] = phase_diff;
 
       avg_phase_shift += phase_diff;
       avg_cnt++;
@@ -630,42 +604,75 @@ double get_peak_ac(double signal1[MAX_SAMPLES], signal_period_samples_t samples_
    return (cnt > 0) ? (accum_peak / cnt) : 0.0;
  }
 
+#ifndef SWO_DEBUG
 /**
- * Calculates the complex impedance in series with a known resistor from the voltage known
+ * Calculates the complex impedance in series with a known resistor from the voltages known
  * @param V1 Excitation voltage
- * @param V2 Voltage over the resistor
- * @param phase Phase difference from the resistor to the excitation signal
+ * @param V2 Voltage divided
+ * @param V2_phase_degrees Phase difference between V1 and V2
  * @param series_resistance Resistance value between V2 and ground
+ * @param config Tipe of mesurment circuit LR (INDUCTOR_LR) or RC (CAPACITOR_RC)
  * @return Complex form impedance form as Z_t structure
  */
-z_t get_z(double V1, double V2, double phase, resistance_values_t series_resistance) {
-   const double I = (V2)/(series_resistance);
-   const double phase_I = phase;
-   const double Re_I = I*cos(phase_I);
-   const double Im_I = I*sin(phase_I);
+z_t get_z(const double V1, const double V2, const double V2_phase_degrees,
+          const resistance_values_t series_resistance,
+          const element_configuration_t config) {
+   const long double phase = (M_PI*V2_phase_degrees) / 180.0;
 
-   const double Re_V2 = V2*cos(phase);
-   const double Im_V2 = V2*sin(phase);
+   // printf("\nPhase rad: %Lf\n rad", phase);
 
-   const double Re_V12 = V1 - Re_V2;
-   const double Im_V12 = - Im_V2;
+   const long double Re_V2 = V2 * cosl(phase);
+   const long double Im_V2 = V2 * sinl(phase);
+   // printf("Re{V2} = %Lf\n", Re_V2);
+   // printf("Im{V2} = %Lf\n", Im_V2);
 
-   // Complex division for improved stability on small Re_Z values
-   double denom = Re_I * Re_I + Im_I * Im_I;
-   double Re_Z = (Re_V12 * Re_I + Im_V12 * Im_I) / denom;
-   double Im_Z = (Im_V12 * Re_I - Re_V12 * Im_I) / denom;
+   long double Re_Vz;
+   long double Im_Vz;
+
+   long double Re_I, Im_I;
+
+   if (config == INDUCTOR_LR) {
+     Re_I = Re_V2 / series_resistance;
+     Im_I = Im_V2 / series_resistance;
+
+     // printf("Re{I} = %Lf\n", Re_I);
+     // printf("Im{I} = %Lf\n", Im_I);
+
+     Re_Vz = (V1 - Re_V2);
+     Im_Vz = - Im_V2;
+
+     // printf("Re{Vz} = %Lf\n", Re_Vz);
+     // printf("Im{Vz} = %Lf\n", Im_Vz);
+   } else { // CAPACITOR_RC
+     Re_I = (V1 - Re_V2) / series_resistance;
+     Im_I = -Im_V2 / series_resistance;
+
+     // printf("Re{I} = %Lf\n", Re_I);
+     // printf("Im{I} = %Lf\n", Im_I);
+
+     Re_Vz = Re_V2;
+     Im_Vz = Im_V2;
+
+     // printf("Re{Vz} = %Lf\n", Re_Vz);
+     // printf("Im{Vz} = %Lf\n", Im_Vz);
+   }
+
+   // Impedance Z = Vz/I. Rectangular division to increase numeric stability
+   const long double denominator = Re_I * Re_I + Im_I * Im_I;
+   const long double Re_Z = (Re_Vz * Re_I + Im_Vz * Im_I) / denominator;
+   const long double Im_Z = (Im_Vz * Re_I - Re_Vz * Im_I) / denominator;
 
    z_t result = {Re_Z, Im_Z};
    return result;
  }
+#endif
 
 /* USER CODE END 0 */
 
 /**
   * @brief  The application entry point.
-  * @retval int
   */
-int main(void)
+void main(void)
 {
 
   /* USER CODE BEGIN 1 */
@@ -696,15 +703,18 @@ int main(void)
   MX_USB_DEVICE_Init();
   /* USER CODE BEGIN 2 */
   HAL_Delay(100);
-  printf("\r"); // start serial
+  printf("\r\n"); // start serial
   command_ready = 0xFF;
   samples_per_period_conf = TWENTY_SAMPLES;
-  source_frequency_conf = TEN_KHZ;
+  source_frequency_conf = ONE_MHZ;
   resistor_conf = TEN_K_OHMS;
 
   if (HAL_ADCEx_Calibration_Start(&hadc1) != HAL_OK || HAL_ADCEx_Calibration_Start(&hadc2) != HAL_OK) {
     printf("ERROR: Failed to calibrate ADC\r\n");
-    return HAL_ERROR;
+  }
+
+  if (HAL_ADC_Start(&hadc2) != HAL_OK) {
+    printf("ERROR: Failed to start ADC2\r\n");
   }
 
 #ifdef SWO_DEBUG
@@ -729,8 +739,8 @@ int main(void)
       printf("Acquired %.0f samples. \r\n", (float)sample_count);
       printf("%-9s %-5s %-5s\r\n", "Time", "ADC1", "ADC2");
 
-      for (int i = 0; i < MAX_SAMPLES; i++)
-        ADC_timming_buffer_us[i] = i*1e6/(samples_per_period_conf*source_frequency_conf*1.);
+//      for (int i = 0; i < MAX_SAMPLES; i++)
+//        ADC_timming_buffer_us[i] = i*1e6/(samples_per_period_conf*source_frequency_conf*1.);
 
       for (int i = 0; i < MAX_SAMPLES; i++) {
         const uint16_t val_adc1 = (DMA_ADC_buffer[i] & 0xFFFF);
@@ -739,80 +749,135 @@ int main(void)
         adc1[i] = round(val_adc1*(330.0/0x0FFF))/100;
         adc2[i] = round(val_adc2*(330.0/0x0FFF))/100;
 
-        printf("%09.2f %+01.3f %+01.3f \r\n", ADC_timming_buffer_us[i], adc1[i], adc2[i]);
+        // printf("%09.2f %+01.3f %+01.3f \r\n", i*1e6/(samples_per_period_conf*source_frequency_conf*1.) , adc1[i], adc2[i]);
 
       }
-#ifndef SWO_DEBUG
-      printf("\r\nFiltered readings:\r\n");
-
-      printf("%-9s %-6s %-6s %-6s %-6s %-6s \r\n", "Time", "ADC1", "ADC2", "PHASE","S1+-", "S2+-");
 
       band_pass_filter(1, adc1, source_frequency_conf, samples_per_period_conf);
       band_pass_filter(1, adc2, source_frequency_conf, samples_per_period_conf);
 
       printf("\r\nPhase readings:\r\n");
-      double phase = get_phase_shift(adc1, adc2, source_frequency_conf, samples_per_period_conf);
+      double phase = -get_phase_shift(adc1, adc2, source_frequency_conf, samples_per_period_conf);
+
+      printf("\r\nFiltered readings:\r\n");
+      printf("%-9s %-6s %-6s %-6s %-6s \r\n", "Time,", "ADC1,", "ADC2,","S1+-,", "S2+-");
 
       for (int i = 0; i < MAX_SAMPLES; i++) {
-        printf("%09.2f %+01.3f %+01.3f %+03.1f %+5d %+5d\r\n",
-              ADC_timming_buffer_us[i],
-              adc1[i], adc2[i],
-              phase_shift[i],
-              zero_crossings_1[i], zero_crossings_2[i]);
+		printf("%06.02f, %+06.03f, %+06.03f, %+5d, %+5d\r\n",
+			  i*1e6/(samples_per_period_conf*source_frequency_conf*1.),
+			  adc1[i],
+			  adc2[i],
+			  zero_crossings_1[i], zero_crossings_2[i]);
       }
 
-      printf("\r\nFinal phase: %f\r\n", phase);
       double peak_sig1 = get_peak_ac(adc1, samples_per_period_conf);
       double peak_sig2 = get_peak_ac(adc2, samples_per_period_conf);
 
-      printf("\r\nPeak signal 1: %f\r\n", peak_sig1);
-      printf("\r\nPeak signal 2: %f\r\n", peak_sig2);
+      printf("\r\nFrequency: %lu Hz\r\n", source_frequency_conf);
+      printf("Samples per period: %lu\r\n", samples_per_period_conf);
 
-      z_t impedance = get_z(peak_sig1, peak_sig2, phase, resistor_conf);
-      if (impedance.imaginary > 1e-9) { // inductive
-        double L = impedance.imaginary / (2 * M_PI * source_frequency_conf);
-        printf("Equivalent: R = %.3f Ω, L = %.3e H\n", impedance.real, L);
-      } else if (impedance.imaginary < -1e-9) { // capacitive
-        double C = -1.0 / (2 * M_PI * source_frequency_conf * impedance.imaginary);
-        printf("Equivalent: R = %.3f Ω, C = %.3e F\n", impedance.real, C);
-      } else {
-        printf("Equivalent: R = %.3f Ω \n", impedance.real);
+      printf("Phase: %f degrees\r\n", phase);
+      printf("Peak (source): %f volts\r\n", peak_sig2);
+      printf("Peak (division node): %f volts\r\n", peak_sig1);
+      printf("Series resistor: %lu ohms\r\n\r\n", resistor_conf);
+#ifndef SWO_DEBUG
+
+      switch (element_conf) {
+        case INDUCTOR_LR: {
+          const z_t impedance = get_z(peak_sig2, peak_sig1, phase, resistor_conf, element_conf);
+          printf("|Z| = %3.3Le ohms\r\n", hypotl(impedance.real, impedance.imaginary));
+          printf("ESR = %3.3Le ohms\r\n", impedance.real);
+          long double L = impedance.imaginary / (2 * M_PI * source_frequency_conf);
+          printf("L = %3.3Le H\r\n", L);
+          break;
+        }
+        case CAPACITOR_RC: {
+        const z_t impedance = get_z(peak_sig2, peak_sig1, phase, resistor_conf, element_conf);
+        printf("|Z| = %3.3Le ohms\r\n", hypotl(impedance.real, impedance.imaginary));
+        printf("ESR = %3.3Le ohms\r\n", impedance.real);
+        long double C = -1.0 / (2 * M_PI * source_frequency_conf * impedance.imaginary);
+        printf("C = %3.3Le F\r\n", C);
+        break;
+        }
+        case RESISTOR_LR:
+          long double R = resistor_conf*(peak_sig1/(peak_sig2 - peak_sig1));
+          printf("R = %3.3Le ohms\r\n", R);
       }
+
+
 #endif
       command_ready = 0xFF;
       HAL_Delay(100U);
-      NVIC_SystemReset();
+      // NVIC_SystemReset();
     }
     if (command_ready == 0xFF) {
       uint8_t show_menu = 0xFF;
+
       if (strcmp((char*)Rx, "1") == 0) {
         printf("Toggle LED\r\n");
         HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
       }
       else if (strcmp((char*)Rx, "2") == 0) {
-      	printf("READ ADC:\r\n");
+        char reading_options[] =
+        "\r\n===== Measure =====\r\n"
+          "21. Inductor (LR circuit)\r\n"
+          "22. Capacitor (RC circuit)\r\n"
+          "23. Resistor (LR circuit)\r\n"
+          "0. Go back\r\n"
+          "Enter choice: ";
+        while (CDC_Transmit_FS((uint8_t*)reading_options, strlen(reading_options)) == USBD_BUSY) {}
+        show_menu = 0x00;
+      }
+      else if (strcmp((char*)Rx, "21") == 0) {
+        element_conf = INDUCTOR_LR;
 
-        Start_Dual_ADC_DMA(source_frequency_conf,
-          samples_per_period_conf,
-          MAX_SAMPLES,
-          DMA_ADC_buffer);
+        if (Start_Dual_ADC_DMA(source_frequency_conf,
+			  samples_per_period_conf,
+			  MAX_SAMPLES,
+			  DMA_ADC_buffer) != HAL_OK) {
+            printf("ERROR: Failed to run ADC and DMA\r\n");
+        }
+
+        HAL_Delay(100U);
+      }
+      else if (strcmp((char*)Rx, "22") == 0) {
+        element_conf = CAPACITOR_RC;
+
+        if (Start_Dual_ADC_DMA(source_frequency_conf,
+			  samples_per_period_conf,
+			  MAX_SAMPLES,
+			  DMA_ADC_buffer) != HAL_OK) {
+            printf("ERROR: Failed to run ADC and DMA\r\n");
+        }
+        HAL_Delay(100U);
+      }
+      else if (strcmp((char*)Rx, "23") == 0) {
+        element_conf = RESISTOR_LR;
+
+        if (Start_Dual_ADC_DMA(source_frequency_conf,
+        samples_per_period_conf,
+        MAX_SAMPLES,
+        DMA_ADC_buffer) != HAL_OK) {
+          printf("ERROR: Failed to run ADC and DMA\r\n");
+        }
+        HAL_Delay(100U);
       }
       else if (strcmp((char*)Rx, "3") == 0) {
         printf("\r\n=== Settings ===\r\n"
           "Signal frequency: %lu Hz\r\n"
           "Samples per period: %lu\r\n"
-          "Series resistor: %lu\r\n",
+          "Series resistor: %lu ohms\r\n",
           source_frequency_conf,
           samples_per_period_conf,
-		  resistor_conf
+          resistor_conf
           );
-        char settigns[] =
+        char settings[] =
           "31. Define signal frequency\r\n"
           "32. Set samples per period\r\n"
-		  "33. Change series resistor\r\n"
-          "34. Go back\r\n"
+		      "33. Change series resistor\r\n"
+          "0. Go back\r\n"
           "Enter choice: ";
-        while (CDC_Transmit_FS((uint8_t*)settigns, strlen(settigns)) == USBD_BUSY) {}
+        while (CDC_Transmit_FS((uint8_t*)settings, strlen(settings)) == USBD_BUSY) {}
         show_menu = 0x00;
       }
       else if (strcmp((char*)Rx, "31") == 0) {
@@ -825,7 +890,7 @@ int main(void)
           "315. 100 kHz\r\n"
           "316. 1 MHz\r\n"
           "317. 5 MHz\r\n"
-          "34. Go back\r\n"
+          "0. Go back\r\n"
           "Enter choice: ";
         while (CDC_Transmit_FS((uint8_t*)signal_frequencies, strlen(signal_frequencies)) == USBD_BUSY) {}
         show_menu = 0x00;
@@ -858,9 +923,11 @@ int main(void)
           "322. Five\r\n"
           "323. Ten\r\n"
           "324. Twenty\r\n"
-          "34. Go back\r\n"
+          "0. Go back\r\n"
           "Enter choice: ";
-        while (CDC_Transmit_FS((uint8_t*)samplings, strlen(samplings)) == USBD_BUSY) {}
+        while (CDC_Transmit_FS((uint8_t*)samplings, strlen(samplings)) == USBD_BUSY) {
+          __NOP();
+        }
         show_menu = 0x00;
       }
       else if (strcmp((char*)Rx, "321") == 0) {
@@ -876,17 +943,21 @@ int main(void)
         samples_per_period_conf = TWENTY_SAMPLES;
       }
       else if (strcmp((char*)Rx, "33") == 0) {
-          char resistances[] = "\r\n=== Series Resistance ===\r\n"
-          "331. 100 	ohms\r\n"
-          "332. 1000 	ohms\r\n"
-          "333. 10000 	ohms\r\n"
-          "34. Go back\r\n"
-          "Enter choice: ";
-        while (CDC_Transmit_FS((uint8_t*)resistances, strlen(resistances) == USBD_BUSY)) {}
+        char resistors[] =
+          "\r\n=== Series Resistance (ohms) ===\r\n"
+           "331. 200\r\n"
+           "332. 1000\r\n"
+           "333. 10000\r\n"
+           "334. 100000\r\n"
+           "0. Go back\r\n"
+           "Enter choice: ";
+        while (CDC_Transmit_FS((uint8_t*)resistors, strlen(resistors)) == USBD_BUSY) {
+          __NOP();
+        }
         show_menu = 0x00;
       }
-      else if (strcmp((char*)Rx, "332") == 0) {
-        resistor_conf = ONE_HUNDRED_OHMS;
+      else if (strcmp((char*)Rx, "331") == 0) {
+        resistor_conf = TWO_HUNDRED_OHMS;
       }
       else if (strcmp((char*)Rx, "332") == 0) {
         resistor_conf = ONE_K_OHMS;
@@ -894,7 +965,10 @@ int main(void)
       else if (strcmp((char*)Rx, "333") == 0) {
         resistor_conf = TEN_K_OHMS;
       }
-      else if (strcmp((char*)Rx, "34") == 0) {
+      else if (strcmp((char*)Rx, "334") == 0) {
+        resistor_conf = ONE_HUNDRED_K_OHMS;
+      }
+      else if (strcmp((char*)Rx, "0") == 0) {
         __NOP();
       }
       else if (strcmp((char*)Rx, "4") == 0) {
@@ -923,7 +997,6 @@ int main(void)
       cmd_index = 0;
       command_ready = 0x00;
       memset(Rx, 0, sizeof(Rx));
-
 #ifdef SWO_DEBUG
   Rx[0] = '2';
   Rx[1] = '\0';
